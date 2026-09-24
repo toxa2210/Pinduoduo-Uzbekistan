@@ -1,31 +1,123 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { createHash } from "node:crypto";
+import { PrismaService } from "../../../database/prisma.service";
+
+type RpcRequest = { id?: string|number|null; method?: string; params?: any };
 
 @Injectable()
 export class PaymeService {
-  constructor(private readonly config: ConfigService) {}
-
-  private getKey() {
-    return this.config.get<string>("PAYME_MERCHANT_KEY") ?? "";
-  }
-
-  private parseAuth(header?: string) {
-    if (!header?.startsWith("Basic ")) return "";
-    return Buffer.from(header.slice(6), "base64").toString("utf8").split(":")[1] ?? "";
-  }
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService
+  ) {}
 
   authorize(header?: string) {
-    return this.parseAuth(header) === this.getKey();
+    const key = this.config.get<string>("PAYME_MERCHANT_KEY") ?? "";
+    if (!header?.startsWith("Basic ") || !key) return false;
+    const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
+    const [, password] = decoded.split(":");
+    return password === key;
   }
 
-  merchantId() {
-    return this.config.get<string>("PAYME_MERCHANT_ID") ?? "";
+  private rpc(id: RpcRequest["id"], result: unknown) {
+    return { jsonrpc: "2.0", id: id ?? null, result };
   }
 
-  transactionId(payload: Record<string, unknown>) {
-    return createHash("sha256")
-      .update(`${payload.id ?? ""}:${payload.time ?? ""}:${this.getKey()}`)
-      .digest("hex");
+  private error(id: RpcRequest["id"], code: number, message: string) {
+    return { jsonrpc: "2.0", id: id ?? null, error: { code, message } };
+  }
+
+  private orderId(params: any) {
+    return String(params?.account?.order_id ?? "");
+  }
+
+  async handle(req: RpcRequest) {
+    switch (req.method) {
+      case "CheckPerformTransaction": return this.checkPerform(req);
+      case "CreateTransaction": return this.create(req);
+      case "CheckTransaction": return this.check(req);
+      case "PerformTransaction": return this.perform(req);
+      case "CancelTransaction": return this.cancel(req);
+      case "GetStatement": return this.statement(req);
+      default: return this.error(req.id, -32601, "Method not found");
+    }
+  }
+
+  private async checkPerform(req: RpcRequest) {
+    const id = this.orderId(req.params);
+    const amount = Number(req.params?.amount ?? 0);
+    const order = await this.prisma.order.findUnique({ where: { id } });
+    if (!order) return this.error(req.id, -31050, "Account not found");
+    if (amount !== order.totalMinor * 100) return this.error(req.id, -31001, "Incorrect amount");
+    return this.rpc(req.id, { allow: true });
+  }
+
+  private async create(req: RpcRequest) {
+    const id = this.orderId(req.params);
+    const paymeId = String(req.params?.id ?? "");
+    const amount = Number(req.params?.amount ?? 0);
+    const order = await this.prisma.order.findUnique({ where: { id } });
+    if (!order) return this.error(req.id, -31050, "Account not found");
+    if (amount !== order.totalMinor * 100) return this.error(req.id, -31001, "Incorrect amount");
+
+    const existing = await this.prisma.payment.findFirst({ where: { externalRef: paymeId } });
+    if (existing) {
+      return this.rpc(req.id, {
+        create_time: existing.createdAt.getTime(),
+        perform_time: existing.status === "PAID" ? existing.updatedAt.getTime() : 0,
+        cancel_time: existing.status === "REFUNDED" ? existing.updatedAt.getTime() : 0,
+        transaction: existing.id,
+        state: existing.status === "PAID" ? 2 : 1
+      });
+    }
+
+    const payment = await this.prisma.payment.create({
+      data: {
+        orderId: order.id,
+        provider: "payme",
+        externalRef: paymeId,
+        amountMinor: order.totalMinor,
+        currency: "UZS",
+        status: "PROCESSING"
+      }
+    });
+
+    return this.rpc(req.id, {
+      create_time: payment.createdAt.getTime(),
+      perform_time: 0,
+      cancel_time: 0,
+      transaction: payment.id,
+      state: 1
+    });
+  }
+
+  private async check(req: RpcRequest) {
+    const payment = await this.prisma.payment.findFirst({ where: { externalRef: String(req.params?.id ?? "") } });
+    if (!payment) return this.error(req.id, -31003, "Transaction not found");
+    return this.rpc(req.id, {
+      create_time: payment.createdAt.getTime(),
+      perform_time: payment.status === "PAID" ? payment.updatedAt.getTime() : 0,
+      cancel_time: payment.status === "REFUNDED" ? payment.updatedAt.getTime() : 0,
+      transaction: payment.id,
+      state: payment.status === "PAID" ? 2 : payment.status === "REFUNDED" ? -1 : 1
+    });
+  }
+
+  private async perform(req: RpcRequest) {
+    const payment = await this.prisma.payment.findFirst({ where: { externalRef: String(req.params?.id ?? "") } });
+    if (!payment) return this.error(req.id, -31003, "Transaction not found");
+    const updated = await this.prisma.payment.update({ where: { id: payment.id }, data: { status: "PAID" } });
+    return this.rpc(req.id, { transaction: updated.id, perform_time: updated.updatedAt.getTime() });
+  }
+
+  private async cancel(req: RpcRequest) {
+    const payment = await this.prisma.payment.findFirst({ where: { externalRef: String(req.params?.id ?? "") } });
+    if (!payment) return this.error(req.id, -31003, "Transaction not found");
+    const updated = await this.prisma.payment.update({ where: { id: payment.id }, data: { status: "REFUNDED" } });
+    return this.rpc(req.id, { transaction: updated.id, cancel_time: updated.updatedAt.getTime() });
+  }
+
+  private async statement(req: RpcRequest) {
+    return this.rpc(req.id, { transactions: [] });
   }
 }
