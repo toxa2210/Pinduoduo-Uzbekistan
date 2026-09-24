@@ -45,7 +45,17 @@ export class PaynetService {
   private async getInformation(req: RpcRequest) {
     const orderId = this.field(req.params ?? {}, "order_id");
     if (!orderId) return this.error(req.id, 411, "order_id is required");
-    return this.rpc(req.id, { status: 0, account: [{ fieldName: "order_id", value: String(orderId) }] });
+    try {
+      const order = await this.payments.getOrderForProvider(String(orderId));
+      return this.rpc(req.id, {
+        status: 0,
+        customer: String(order.userId),
+        account: [{ fieldName: "order_id", value: order.id }],
+        balance: order.totalMinor
+      });
+    } catch {
+      return this.error(req.id, 302, "Client not found");
+    }
   }
 
   private async perform(req: RpcRequest) {
@@ -55,21 +65,32 @@ export class PaynetService {
     const amount = Number(p.amount ?? 0);
     if (!orderId || !transactionId || !amount) return this.error(req.id, 411, "Required parameter is missing");
 
-    const order = await this.payments.getOrderPayment(String(orderId), req.params?.user_id ?? "");
+    let order;
+    try { order = await this.payments.getOrderForProvider(String(orderId)); }
+    catch { return this.error(req.id, 302, "Client not found"); }
     if (amount !== order.totalMinor * 100) return this.error(req.id, 413, "Invalid amount");
 
-    const existing = order.payments.find((p) => p.externalRef === transactionId);
+    const existing = order.payments.find((p) => p.provider === "paynet" && p.externalRef === transactionId);
     if (existing) return this.error(req.id, 201, "Transaction already exists");
 
     return this.error(req.id, 500, "Payment creation requires merchant account context");
   }
 
   private async check(req: RpcRequest) {
-    return this.error(req.id, 404, "Transaction lookup requires merchant account context");
+    const payment = await this.payments.findByProviderRef("paynet", String(req.params?.transactionId ?? req.params?.transaction_id ?? ""));
+    return this.rpc(req.id, {
+      transactionState: payment?.status === "PAID" ? 1 : payment ? 0 : 3,
+      providerTrnId: payment?.id ?? null,
+      transactionId: String(req.params?.transactionId ?? req.params?.transaction_id ?? "")
+    });
   }
 
   private async cancel(req: RpcRequest) {
-    return this.error(req.id, 404, "Transaction lookup requires merchant account context");
+    const transactionId = String(req.params?.transactionId ?? req.params?.transaction_id ?? "");
+    const payment = await this.payments.findByProviderRef("paynet", transactionId);
+    if (!payment) return this.error(req.id, 203, "Transaction not found");
+    await this.payments.markRefunded(payment.id);
+    return this.rpc(req.id, { transactionState: 2, providerTrnId: payment.id, transactionId });
   }
 
   private async statement(req: RpcRequest) {
