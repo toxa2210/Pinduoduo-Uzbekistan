@@ -1,11 +1,13 @@
 {
-  "name": "pinduoduo-uzbekistan",
-  "private": true,
-  "version": "0.1.0",
-  "description": "Cross-border e-commerce platform for Uzbekistan",
-  "scripts": {
-    "dev:backend": "npm --prefix backend run dev",
-    "build:backend": "npm --prefix backend run build",
-    "test:backend": "npm --prefix backend run test"
+  "name":"pinduoduo-uzbekistan",
+  "private":true,
+  "version":"0.1.0",
+  "description":"Cross-border e-commerce platform for Uzbekistan",
+  "scripts":{
+    "dev:frontend":"npm --prefix frontend run dev",
+    "build:frontend":"npm --prefix frontend run build",
+    "dev:backend":"npm --prefix backend run dev",
+    "build:backend":"npm --prefix backend run build",
+    "test:backend":"npm --prefix backend run test"
   }
 }
