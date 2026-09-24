@@ -16,19 +16,10 @@ export class PaymentsController {
   }
 
   @Post("payme")
-  payme(@Headers("authorization") authorization: string | undefined, @Body() body: Record<string, unknown>) {
+  async payme(@Headers("authorization") authorization: string | undefined, @Body() body: Record<string, unknown>) {
     if (!this.payme.authorize(authorization)) {
       return { jsonrpc: "2.0", id: body.id ?? null, error: { code: -32504, message: "Unauthorized" } };
     }
-
-    return {
-      jsonrpc: "2.0",
-      id: body.id ?? null,
-      result: {
-        method: body.method,
-        merchant_id: this.payme.merchantId(),
-        transaction_id: this.payme.transactionId((body.params ?? {}) as Record<string, unknown>)
-      }
-    };
+    return this.payme.handle(body);
   }
 }
