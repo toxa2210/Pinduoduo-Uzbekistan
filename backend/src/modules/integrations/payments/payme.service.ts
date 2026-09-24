@@ -70,8 +70,13 @@ export class PaymeService {
       });
     }
 
-    const payment = await this.payments["prisma"].payment.create({
-      data: { orderId: order.id, provider: "payme", externalRef: paymeId, amountMinor: order.totalMinor, currency: "UZS", status: "PROCESSING" }
+    const payment = await this.payments.createProviderPayment({
+      orderId: order.id,
+      provider: "payme",
+      externalRef: paymeId,
+      amountMinor: order.totalMinor,
+      currency: "UZS",
+      status: "PROCESSING"
     });
 
     return this.rpc(req.id, {
