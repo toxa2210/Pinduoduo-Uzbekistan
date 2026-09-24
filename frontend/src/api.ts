@@ -1,4 +1,4 @@
-const API_BASE=(import.meta.env.VITE_API_URL??"http://localhost:8000/api/v1").replace(/\\/$/,"");
+const API_BASE=(import.meta.env.VITE_API_URL??"http://localhost:8000/api/v1").replace(/\/$/,"");
 
 export type Category={id:string;nameUz:string;nameRu:string};
 export type ApiProduct={id:string;categoryId:string|null;titleUz:string;titleRu?:string|null;descriptionUz?:string|null;descriptionRu?:string|null;currency:string;priceMinor:number;status:string;category?:Category|null;imageUrl?:string|null;thumbnailUrl?:string|null;source?:string};
