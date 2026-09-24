@@ -63,7 +63,8 @@ create table payments (
   amount_minor bigint not null,
   currency char(3) not null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now();
+  updated_at timestamptz not null default now()
+);
 
 create index idx_products_category on products(category_id);
 create index idx_orders_user on orders(user_id);
