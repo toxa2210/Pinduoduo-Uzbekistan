@@ -14,6 +14,21 @@ export class PaymentsService {
     return order;
   }
 
+  async getOrderForProvider(orderId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { payments: { orderBy: { createdAt: "desc" } } }
+    });
+    if (!order) throw new NotFoundException("Order not found");
+    return order;
+  }
+
+  async findByProviderRef(provider: string, externalRef: string) {
+    return this.prisma.payment.findUnique({
+      where: { provider_externalRef: { provider, externalRef } }
+    });
+  }
+
   async markPaid(paymentId: string) {
     return this.prisma.$transaction(async (tx) => {
       const payment = await tx.payment.findUnique({ where: { id: paymentId } });
