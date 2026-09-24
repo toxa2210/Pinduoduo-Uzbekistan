@@ -1,0 +1,1 @@
+export type Money={amount:number;currency:"UZS"|"CNY";formatted?:string}; export type ApiError={success:false;error:{code:string;message:string;requestId?:string}}; export type ProductSource="LOCAL"|"PDD";
