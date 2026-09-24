@@ -7,16 +7,36 @@ on:
     branches: ["main"]
 
 jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install dependencies
+        run: npm install
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: Build backend
+        run: npm run build
+
   repository-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check scaffold
+      - name: Check repository
         run: |
           test -f README.md
           test -f .gitignore
           test -f .env.example
           test -f SECURITY.md
+          test -f docker-compose.yml
           test -d frontend
           test -d backend
           test -d docs
