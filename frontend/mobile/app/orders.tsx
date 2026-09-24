@@ -1,0 +1,1 @@
+import {View,Text,StyleSheet} from "react-native"; export default function Orders(){return <View style={s.v}><Text style={s.t}>Заказы</Text><Text>История заказов и статусы доставки.</Text></View>} const s=StyleSheet.create({v:{flex:1,padding:24,justifyContent:"center"},t:{fontSize:28,fontWeight:"800",marginBottom:12}});
