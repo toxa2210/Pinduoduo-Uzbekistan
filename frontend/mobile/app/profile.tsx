@@ -1,0 +1,1 @@
+import {View,Text,StyleSheet} from "react-native"; export default function Profile(){return <View style={s.v}><Text style={s.t}>Профиль</Text><Text>Авторизация по номеру +998 и настройки аккаунта.</Text></View>} const s=StyleSheet.create({v:{flex:1,padding:24,justifyContent:"center"},t:{fontSize:28,fontWeight:"800",marginBottom:12}});
