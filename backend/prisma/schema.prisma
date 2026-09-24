@@ -177,6 +177,7 @@ model Order {
   totalMinor      Int
   currency        String        @default("UZS")
   deliveryAddress String
+  idempotencyKey   String? @unique
   addressId       String?
   address         Address? @relation(fields: [addressId], references: [id])
   createdAt       DateTime      @default(now())
