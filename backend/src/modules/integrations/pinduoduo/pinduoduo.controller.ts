@@ -5,6 +5,8 @@ import { PinduoduoService } from "./pinduoduo.service";
 export class PinduoduoController {
   constructor(private readonly pdd:PinduoduoService) {}
   @Get("status") status(){return this.pdd.status();}
+  @Get("integrations/pdd/status") aliasStatus() { return this.pdd.status(); }
+
   @Get("goods/search") search(@Query("keyword") keyword?:string,@Query("page") page="1",@Query("page_size") pageSize="20"){
     if(!keyword?.trim()) throw new BadRequestException({code:"KEYWORD_REQUIRED",message:"keyword is required"});
     return this.pdd.searchGoods(keyword.trim(),Number(page),Number(pageSize));
