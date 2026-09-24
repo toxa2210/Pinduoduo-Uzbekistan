@@ -20,8 +20,14 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Validate Prisma schema
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pinduoduo_uz?schema=public
+
         run: npx prisma validate
       - name: Generate Prisma client
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pinduoduo_uz?schema=public
+
         run: npx prisma generate
       - name: Build backend
         run: npm run build
