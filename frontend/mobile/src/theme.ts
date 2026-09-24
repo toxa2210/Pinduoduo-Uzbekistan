@@ -1,0 +1,1 @@
+export const theme={brand:"#E02B2B",brandSoft:"#FFF1F1",ink:"#17181A",muted:"#6F7378",bg:"#F7F7F8",surface:"#FFFFFF",line:"#E9EAEC",success:"#19A463",warning:"#FFB020",info:"#3478F6"};
