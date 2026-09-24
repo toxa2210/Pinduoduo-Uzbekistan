@@ -20,12 +20,20 @@ enum ProductStatus {
 
 enum OrderStatus {
   CREATED
+  PENDING_PAYMENT
   AWAITING_PAYMENT
   PAID
   PROCESSING
   SHIPPED
+  IN_TRANSIT
   DELIVERED
   CANCELLED
+  REFUNDED
+}
+
+enum ProductSource {
+  LOCAL
+  PDD
 }
 
 enum PaymentStatus {
@@ -45,6 +53,7 @@ model User {
   orders        Order[]
   sessions      Session[]
   cart          Cart?
+  addresses     Address[]
 }
 
 model OtpChallenge {
@@ -114,6 +123,11 @@ model Product {
   priceMinor         Int
   status             ProductStatus @default(DRAFT)
   supplierProductRef String?
+  source             ProductSource @default(LOCAL)
+  externalId         String?
+  imageUrl           String?
+  thumbnailUrl       String?
+  images             ProductImage[]
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
   orderItems         OrderItem[]
@@ -121,6 +135,38 @@ model Product {
 
   @@index([categoryId])
   @@index([status])
+  @@index([source])
+  @@unique([source, externalId])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  sortOrder Int     @default(0)
+  @@index([productId])
+}
+
+model Address {
+  id            String  @id @default(cuid())
+  userId        String
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  country       String  @default("UZ")
+  region        String
+  city          String
+  district      String?
+  street        String
+  house         String
+  apartment     String?
+  postalCode    String?
+  recipientName String
+  phone         String
+  isDefault     Boolean @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  orders        Order[]
+  @@index([userId])
 }
 
 model Order {
@@ -131,6 +177,8 @@ model Order {
   totalMinor      Int
   currency        String        @default("UZS")
   deliveryAddress String
+  addressId       String?
+  address         Address? @relation(fields: [addressId], references: [id])
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   items           OrderItem[]
@@ -138,6 +186,7 @@ model Order {
 
   @@index([userId])
   @@index([status])
+  @@index([addressId])
 }
 
 model OrderItem {
