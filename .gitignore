@@ -1,0 +1,40 @@
+# Secrets / environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Builds / caches
+dist/
+build/
+.next/
+coverage/
+.cache/
+.tmp/
+temp/
+
+# IDE / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs / local data
+*.log
+logs/
+*.sqlite
+*.sqlite3
+*.db
+data/
