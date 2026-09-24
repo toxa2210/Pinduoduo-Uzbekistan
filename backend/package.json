@@ -1,7 +1,7 @@
 {
   "name": "@pinduoduo-uz/backend",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "scripts": {
     "dev": "nest start --watch",
     "start": "nest start",
@@ -9,6 +9,7 @@
     "test": "jest",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "tsx prisma/seed.ts",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
@@ -28,8 +29,9 @@
     "@nestjs/testing": "^11.0.0",
     "@types/node": "^22.0.0",
     "jest": "^30.0.0",
+    "prisma": "^6.0.0",
+    "tsx": "^4.19.0",
     "ts-jest": "^29.0.0",
-    "typescript": "^5.7.0",
-    "prisma": "^6.0.0"
+    "typescript": "^5.7.0"
   }
 }
