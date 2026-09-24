@@ -1,0 +1,2 @@
+import { CurrencyService } from "./currency.service";
+describe("CurrencyService",()=>{beforeEach(()=>{process.env.CNY_UZS_RATE="1750";});it("returns 1 for same currency",()=>expect(new CurrencyService().getRate("UZS","UZS")).toBe(1));it("converts minor units without float output",()=>expect(new CurrencyService().convert(100,"CNY","UZS")).toBe(175000));it("fails for missing rate",()=>expect(()=>new CurrencyService().getRate("EUR","UZS")).toThrow());});
