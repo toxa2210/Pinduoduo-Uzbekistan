@@ -23,6 +23,26 @@ export class PaymentsService {
     return order;
   }
 
+  async createProviderPayment(input: {
+    orderId: string;
+    provider: string;
+    externalRef: string;
+    amountMinor: number;
+    currency?: string;
+    status?: "PENDING" | "PROCESSING" | "PAID";
+  }) {
+    return this.prisma.payment.create({
+      data: {
+        orderId: input.orderId,
+        provider: input.provider,
+        externalRef: input.externalRef,
+        amountMinor: input.amountMinor,
+        currency: input.currency ?? "UZS",
+        status: input.status ?? "PROCESSING"
+      }
+    });
+  }
+
   async findByProviderRef(provider: string, externalRef: string) {
     return this.prisma.payment.findUnique({
       where: { provider_externalRef: { provider, externalRef } }
