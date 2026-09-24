@@ -1,0 +1,2 @@
+import type { PddProduct } from "./pinduoduo.service";
+export interface PddAdapter { searchProducts(keyword:string,page?:number,limit?:number):Promise<{total:number;items:PddProduct[]}>; getProduct(externalId:string):Promise<PddProduct|null>; getCategories(parentId?:number):Promise<unknown>; createOrder?(input:Record<string,unknown>):Promise<unknown>; getOrder?(externalId:string):Promise<unknown>; cancelOrder?(externalId:string):Promise<unknown>; getLogistics?(externalId:string):Promise<unknown>; }
