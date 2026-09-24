@@ -1,0 +1,1 @@
+export function SearchBar({value="",onChange}:{value?:string;onChange?:(value:string)=>void}){return <input data-design="PDU/SearchBar" value={value} onChange={e=>onChange?.(e.target.value)} placeholder="Найти товары, бренды и категории"/>}
