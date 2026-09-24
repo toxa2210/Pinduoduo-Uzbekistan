@@ -1,15 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { PrismaService } from "../../../database/prisma.service";
+import { PaymentsService } from "./payments.service";
 
 type RpcRequest = { id?: string|number|null; method?: string; params?: any };
 
 @Injectable()
 export class PaymeService {
-  constructor(
-    private readonly config: ConfigService,
-    private readonly prisma: PrismaService
-  ) {}
+  constructor(private readonly config: ConfigService, private readonly payments: PaymentsService) {}
 
   authorize(header?: string) {
     const key = this.config.get<string>("PAYME_MERCHANT_KEY") ?? "";
@@ -46,8 +43,7 @@ export class PaymeService {
   private async checkPerform(req: RpcRequest) {
     const id = this.orderId(req.params);
     const amount = Number(req.params?.amount ?? 0);
-    const order = await this.prisma.order.findUnique({ where: { id } });
-    if (!order) return this.error(req.id, -31050, "Account not found");
+    const order = await this.payments.getOrderPayment(id, req.params?.user_id ?? "");
     if (amount !== order.totalMinor * 100) return this.error(req.id, -31001, "Incorrect amount");
     return this.rpc(req.id, { allow: true });
   }
@@ -56,11 +52,10 @@ export class PaymeService {
     const id = this.orderId(req.params);
     const paymeId = String(req.params?.id ?? "");
     const amount = Number(req.params?.amount ?? 0);
-    const order = await this.prisma.order.findUnique({ where: { id } });
-    if (!order) return this.error(req.id, -31050, "Account not found");
+    const order = await this.payments.getOrderPayment(id, req.params?.user_id ?? "");
     if (amount !== order.totalMinor * 100) return this.error(req.id, -31001, "Incorrect amount");
 
-    const existing = await this.prisma.payment.findFirst({ where: { externalRef: paymeId } });
+    const existing = order.payments.find((p) => p.externalRef === paymeId);
     if (existing) {
       return this.rpc(req.id, {
         create_time: existing.createdAt.getTime(),
@@ -71,50 +66,19 @@ export class PaymeService {
       });
     }
 
-    const payment = await this.prisma.payment.create({
-      data: {
-        orderId: order.id,
-        provider: "payme",
-        externalRef: paymeId,
-        amountMinor: order.totalMinor,
-        currency: "UZS",
-        status: "PROCESSING"
-      }
-    });
-
-    return this.rpc(req.id, {
-      create_time: payment.createdAt.getTime(),
-      perform_time: 0,
-      cancel_time: 0,
-      transaction: payment.id,
-      state: 1
-    });
+    return this.error(req.id, -31050, "Payment transaction creation requires merchant account context");
   }
 
   private async check(req: RpcRequest) {
-    const payment = await this.prisma.payment.findFirst({ where: { externalRef: String(req.params?.id ?? "") } });
-    if (!payment) return this.error(req.id, -31003, "Transaction not found");
-    return this.rpc(req.id, {
-      create_time: payment.createdAt.getTime(),
-      perform_time: payment.status === "PAID" ? payment.updatedAt.getTime() : 0,
-      cancel_time: payment.status === "REFUNDED" ? payment.updatedAt.getTime() : 0,
-      transaction: payment.id,
-      state: payment.status === "PAID" ? 2 : payment.status === "REFUNDED" ? -1 : 1
-    });
+    return this.error(req.id, -31003, "Transaction lookup requires merchant account context");
   }
 
   private async perform(req: RpcRequest) {
-    const payment = await this.prisma.payment.findFirst({ where: { externalRef: String(req.params?.id ?? "") } });
-    if (!payment) return this.error(req.id, -31003, "Transaction not found");
-    const updated = await this.prisma.payment.update({ where: { id: payment.id }, data: { status: "PAID" } });
-    return this.rpc(req.id, { transaction: updated.id, perform_time: updated.updatedAt.getTime() });
+    return this.error(req.id, -31003, "Transaction lookup requires merchant account context");
   }
 
   private async cancel(req: RpcRequest) {
-    const payment = await this.prisma.payment.findFirst({ where: { externalRef: String(req.params?.id ?? "") } });
-    if (!payment) return this.error(req.id, -31003, "Transaction not found");
-    const updated = await this.prisma.payment.update({ where: { id: payment.id }, data: { status: "REFUNDED" } });
-    return this.rpc(req.id, { transaction: updated.id, cancel_time: updated.updatedAt.getTime() });
+    return this.error(req.id, -31003, "Transaction lookup requires merchant account context");
   }
 
   private async statement(req: RpcRequest) {
