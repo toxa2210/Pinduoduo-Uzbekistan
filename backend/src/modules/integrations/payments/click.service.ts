@@ -2,12 +2,14 @@ import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createHash } from "node:crypto";
 import { PrismaService } from "../../../database/prisma.service";
+import { PaymentsService } from "./payments.service";
 
 @Injectable()
 export class ClickService {
   constructor(
     private readonly config: ConfigService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly payments: PaymentsService
   ) {}
 
   private md5(value: string) {
@@ -65,7 +67,9 @@ export class ClickService {
       };
     }
 
-    const payment = await this.prisma.payment.findFirst({ where: { externalRef: String(body.click_trans_id) } });
+    const payment = await this.prisma.payment.findFirst({
+      where: { provider: "click", externalRef: String(body.click_trans_id) }
+    });
     if (!payment) return { error: -6, error_note: "Transaction does not exist" };
     if (payment.status === "PAID") {
       return {
@@ -77,10 +81,7 @@ export class ClickService {
       };
     }
 
-    const updated = await this.prisma.payment.update({
-      where: { id: payment.id },
-      data: { status: "PAID" }
-    });
+    const updated = await this.payments.markPaid(payment.id);
 
     return {
       click_trans_id: body.click_trans_id,
