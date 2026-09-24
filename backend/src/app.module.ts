@@ -7,6 +7,7 @@ import { OrdersModule } from "./modules/orders/orders.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { CartModule } from "./modules/cart/cart.module";
 import { CheckoutModule } from "./modules/checkout/checkout.module";
+import { IntegrationsModule } from "./modules/integrations/integrations.module";
 
 @Module({
   imports: [
@@ -16,7 +17,8 @@ import { CheckoutModule } from "./modules/checkout/checkout.module";
     CatalogModule,
     CartModule,
     OrdersModule,
-    CheckoutModule
+    CheckoutModule,
+    IntegrationsModule
   ],
   controllers: [HealthController]
 })
