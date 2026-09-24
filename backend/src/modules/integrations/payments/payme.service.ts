@@ -43,7 +43,9 @@ export class PaymeService {
   private async checkPerform(req: RpcRequest) {
     const id = this.orderId(req.params);
     const amount = Number(req.params?.amount ?? 0);
-    const order = await this.payments.getOrderPayment(id, req.params?.user_id ?? "");
+    let order;
+    try { order = await this.payments.getOrderForProvider(id); }
+    catch { return this.error(req.id, -31050, "Account not found"); }
     if (amount !== order.totalMinor * 100) return this.error(req.id, -31001, "Incorrect amount");
     return this.rpc(req.id, { allow: true });
   }
@@ -52,33 +54,55 @@ export class PaymeService {
     const id = this.orderId(req.params);
     const paymeId = String(req.params?.id ?? "");
     const amount = Number(req.params?.amount ?? 0);
-    const order = await this.payments.getOrderPayment(id, req.params?.user_id ?? "");
+    let order;
+    try { order = await this.payments.getOrderForProvider(id); }
+    catch { return this.error(req.id, -31050, "Account not found"); }
     if (amount !== order.totalMinor * 100) return this.error(req.id, -31001, "Incorrect amount");
 
-    const existing = order.payments.find((p) => p.externalRef === paymeId);
+    const existing = order.payments.find((p) => p.provider === "payme" && p.externalRef === paymeId);
     if (existing) {
       return this.rpc(req.id, {
         create_time: existing.createdAt.getTime(),
         perform_time: existing.status === "PAID" ? existing.updatedAt.getTime() : 0,
         cancel_time: existing.status === "REFUNDED" ? existing.updatedAt.getTime() : 0,
         transaction: existing.id,
-        state: existing.status === "PAID" ? 2 : 1
+        state: existing.status === "PAID" ? 2 : existing.status === "REFUNDED" ? -1 : 1
       });
     }
 
-    return this.error(req.id, -31050, "Payment transaction creation requires merchant account context");
+    const payment = await this.payments["prisma"].payment.create({
+      data: { orderId: order.id, provider: "payme", externalRef: paymeId, amountMinor: order.totalMinor, currency: "UZS", status: "PROCESSING" }
+    });
+
+    return this.rpc(req.id, {
+      create_time: payment.createdAt.getTime(), perform_time: 0, cancel_time: 0, transaction: payment.id, state: 1
+    });
   }
 
   private async check(req: RpcRequest) {
-    return this.error(req.id, -31003, "Transaction lookup requires merchant account context");
+    const payment = await this.payments.findByProviderRef("payme", String(req.params?.id ?? ""));
+    if (!payment) return this.error(req.id, -31003, "Transaction not found");
+    return this.rpc(req.id, {
+      create_time: payment.createdAt.getTime(),
+      perform_time: payment.status === "PAID" ? payment.updatedAt.getTime() : 0,
+      cancel_time: payment.status === "REFUNDED" ? payment.updatedAt.getTime() : 0,
+      transaction: payment.id,
+      state: payment.status === "PAID" ? 2 : payment.status === "REFUNDED" ? -1 : 1
+    });
   }
 
   private async perform(req: RpcRequest) {
-    return this.error(req.id, -31003, "Transaction lookup requires merchant account context");
+    const payment = await this.payments.findByProviderRef("payme", String(req.params?.id ?? ""));
+    if (!payment) return this.error(req.id, -31003, "Transaction not found");
+    const updated = await this.payments.markPaid(payment.id);
+    return this.rpc(req.id, { transaction: updated.id, perform_time: updated.updatedAt.getTime() });
   }
 
   private async cancel(req: RpcRequest) {
-    return this.error(req.id, -31003, "Transaction lookup requires merchant account context");
+    const payment = await this.payments.findByProviderRef("payme", String(req.params?.id ?? ""));
+    if (!payment) return this.error(req.id, -31003, "Transaction not found");
+    const updated = await this.payments.markRefunded(payment.id);
+    return this.rpc(req.id, { transaction: updated.id, cancel_time: updated.updatedAt.getTime() });
   }
 
   private async statement(req: RpcRequest) {
