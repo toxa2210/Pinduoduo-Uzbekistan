@@ -1,4 +1,4 @@
-import { Body, Controller, Headers, Post, UnauthorizedException } from "@nestjs/common";
+import { Body, Controller, Headers, Post } from "@nestjs/common";
 import { ClickService } from "./click.service";
 import { PaymeService } from "./payme.service";
 
@@ -11,8 +11,7 @@ export class PaymentsController {
 
   @Post("click/callback")
   clickCallback(@Body() body: Record<string, unknown>) {
-    if (!this.click.verifyPrepare(body)) throw new UnauthorizedException("Invalid Click signature");
-    return { error: 0, click_trans_id: body.click_trans_id, merchant_trans_id: body.merchant_trans_id };
+    return this.click.handle(body);
   }
 
   @Post("payme")
