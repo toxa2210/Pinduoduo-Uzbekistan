@@ -1,12 +1,15 @@
-export function createAppConfig() {
-  return {
-    apiPrefix: "api/v1",
-    port: Number(process.env.APP_PORT ?? 8000),
-    environment: process.env.APP_ENV ?? "development"
-  };
+import { NestFactory } from "@nestjs/core";
+import { AppModule } from "./app.module";
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+
+  app.setGlobalPrefix("api/v1");
+
+  const port = Number(process.env.APP_PORT ?? 8000);
+  await app.listen(port);
+
+  console.log(`Pinduoduo Uzbekistan API running on http://localhost:${port}/api/v1`);
 }
 
-if (require.main === module) {
-  const config = createAppConfig();
-  console.log(`Pinduoduo Uzbekistan API configured on port ${config.port}`);
-}
+bootstrap();
