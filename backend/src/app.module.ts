@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+
 import { ConfigModule } from "@nestjs/config";
 import { PrismaModule } from "./database/prisma.module";
 import { HealthController } from "./health.controller";
@@ -8,6 +8,8 @@ import { AuthModule } from "./modules/auth/auth.module";
 import { CartModule } from "./modules/cart/cart.module";
 import { CheckoutModule } from "./modules/checkout/checkout.module";
 import { IntegrationsModule } from "./modules/integrations/integrations.module";
+import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
+import { RequestIdMiddleware } from "./common/request-id.middleware";
 
 @Module({
   imports: [
@@ -22,4 +24,4 @@ import { IntegrationsModule } from "./modules/integrations/integrations.module";
   ],
   controllers: [HealthController]
 })
-export class AppModule {}
+export class AppModule implements NestModule { configure(consumer: MiddlewareConsumer){ consumer.apply(RequestIdMiddleware).forRoutes("*"); } }
