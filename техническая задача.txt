@@ -1,0 +1,1974 @@
+# Техническое задание
+
+## Полное исправление и доведение Pinduoduo Uzbekistan до рабочего MVP
+
+### 1. Цель
+
+Полностью исправить существующий репозиторий:
+
+`toxa2210/Pinduoduo-Uzbekistan`
+
+Не переписывать проект с нуля.
+
+Не удалять существующую архитектуру без необходимости.
+
+Не делать временные визуальные заглушки вместо функциональности.
+
+Главная задача:
+
+> Frontend должен полностью и стабильно работать с Backend API, а Backend должен иметь корректную архитектуру для локальных товаров и товаров Pinduoduo.
+
+Итоговый пользовательский сценарий:
+
+```text
+Открытие сайта
+↓
+Каталог
+↓
+Поиск
+↓
+PDD товары
+↓
+Карточка товара
+↓
+Выбор варианта/количества
+↓
+Добавление в корзину
+↓
+Авторизация
+↓
+Адрес доставки
+↓
+Расчёт итоговой цены
+↓
+Checkout
+↓
+Создание заказа
+↓
+Оплата
+↓
+Callback оплаты
+↓
+Статус заказа PAID
+↓
+Доставка
+↓
+Отслеживание
+```
+
+---
+
+# 2. Главный принцип
+
+Frontend не должен самостоятельно хранить бизнес-логику.
+
+Frontend отвечает за:
+
+* UI;
+* состояние интерфейса;
+* ввод пользователя;
+* отображение данных;
+* вызов API.
+
+Backend отвечает за:
+
+* пользователей;
+* авторизацию;
+* товары;
+* PDD integration;
+* корзины;
+* цены;
+* валюты;
+* заказы;
+* платежи;
+* доставку;
+* статусы;
+* безопасность.
+
+Архитектура:
+
+```text
+Frontend
+    ↓
+REST API
+    ↓
+Backend
+    ├── PostgreSQL
+    ├── Redis
+    ├── PDD Adapter
+    ├── Payment Adapter
+    └── Delivery Adapter
+```
+
+---
+
+# 3. Обязательное правило перед началом работы
+
+Перед изменением кода:
+
+1. Проверить текущую ветку `main`.
+2. Создать отдельную рабочую ветку:
+
+```text
+fix/full-mvp-integration
+```
+
+3. Не удалять рабочие части проекта.
+4. Не менять API без обновления frontend.
+5. После каждого крупного блока запускать build/test.
+6. Не использовать реальные API credentials в Git.
+7. Не добавлять секреты в frontend.
+8. Не делать fake-success для платежей.
+9. Не использовать mock PDD data там, где уже доступен реальный backend endpoint.
+10. Все ошибки должны отображаться пользователю понятным сообщением.
+
+---
+
+# 4. Исправить структуру Frontend
+
+Текущий frontend слишком сильно сосредоточен в `App.tsx`.
+
+Разделить:
+
+```text
+frontend/src/
+
+app/
+components/
+features/
+pages/
+services/
+hooks/
+store/
+types/
+utils/
+```
+
+Рекомендуемая структура:
+
+```text
+src/
+├── app/
+│   ├── App.tsx
+│   └── routes.tsx
+│
+├── components/
+│   ├── Header/
+│   ├── Footer/
+│   ├── ProductCard/
+│   ├── SearchBar/
+│   ├── CategoryCard/
+│   ├── CartItem/
+│   ├── Price/
+│   ├── Loader/
+│   ├── ErrorState/
+│   └── EmptyState/
+│
+├── features/
+│   ├── auth/
+│   ├── catalog/
+│   ├── pdd/
+│   ├── cart/
+│   ├── checkout/
+│   ├── orders/
+│   ├── payments/
+│   └── profile/
+│
+├── pages/
+│   ├── Home/
+│   ├── Catalog/
+│   ├── Product/
+│   ├── Cart/
+│   ├── Checkout/
+│   ├── Orders/
+│   ├── OrderDetails/
+│   ├── Profile/
+│   └── Support/
+│
+├── services/
+│   ├── api/
+│   ├── auth/
+│   ├── pdd/
+│   ├── payments/
+│   └── storage/
+│
+├── hooks/
+├── store/
+├── types/
+└── utils/
+```
+
+---
+
+# 5. Полностью переписать API client
+
+Создать единый API client.
+
+Например:
+
+```text
+services/api/client.ts
+```
+
+Он должен автоматически:
+
+* брать `VITE_API_URL`;
+* отправлять JSON;
+* добавлять Authorization;
+* обрабатывать HTTP errors;
+* обрабатывать timeout;
+* возвращать типизированный ответ;
+* не дублировать fetch logic.
+
+Authorization:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+Token хранить безопасно для текущего MVP, но архитектуру сделать так, чтобы позже можно было перейти на HttpOnly cookie.
+
+---
+
+# 6. Авторизация
+
+Исправить полный flow:
+
+```text
+request OTP
+↓
+verify OTP
+↓
+access token
+↓
+refresh/session
+↓
+authenticated API
+```
+
+Frontend после login обязан использовать полученный token.
+
+API:
+
+```text
+POST /auth/request-otp
+POST /auth/verify-otp
+GET  /auth/me
+POST /auth/logout
+```
+
+Добавить:
+
+* loading;
+* cooldown;
+* повторную отправку;
+* ошибку неправильного OTP;
+* expired OTP;
+* logout;
+* восстановление session после reload.
+
+После reload пользователь не должен автоматически становиться anonymous, если действующая session существует.
+
+---
+
+# 7. OTP безопасность
+
+Добавить:
+
+```text
+IP rate limit
+phone rate limit
+OTP cooldown
+maximum attempts
+OTP expiration
+```
+
+Development:
+
+```text
+123456
+```
+
+разрешается только при:
+
+```env
+APP_ENV=development
+```
+
+Production не должен использовать фиксированный OTP.
+
+---
+
+# 8. Исправить каталог
+
+Frontend должен получать каталог исключительно через backend.
+
+API:
+
+```text
+GET /catalog/products
+GET /catalog/products/:id
+GET /catalog/categories
+GET /catalog/search
+```
+
+Поддержать:
+
+```text
+page
+limit
+search
+category
+minPrice
+maxPrice
+sort
+source
+```
+
+Например:
+
+```text
+GET /catalog/products?page=1&limit=20
+```
+
+---
+
+# 9. Исправить PDD integration
+
+Создать полноценный abstraction layer:
+
+```text
+PddAdapter
+```
+
+Интерфейс:
+
+```ts
+searchProducts()
+getProduct()
+getCategories()
+
+createOrder()
+getOrder()
+cancelOrder()
+getLogistics()
+```
+
+Реализация:
+
+```text
+PddApiAdapter
+MockPddAdapter
+```
+
+В production использовать только `PddApiAdapter`.
+
+Mock использовать исключительно:
+
+* development;
+* tests;
+* demo.
+
+---
+
+# 10. PDD configuration
+
+Использовать только единый набор переменных:
+
+```env
+PDD_API_URL=
+PDD_CLIENT_ID=
+PDD_CLIENT_SECRET=
+PDD_ACCESS_TOKEN=
+```
+
+Удалить дублирующую конфигурацию:
+
+```env
+PINDUODUO_API_BASE_URL
+```
+
+если она больше нигде не используется.
+
+Добавить endpoint:
+
+```text
+GET /integrations/pdd/status
+```
+
+Ответ:
+
+```json
+{
+  "configured": true,
+  "reachable": true,
+  "authenticated": true,
+  "provider": "pinduoduo"
+}
+```
+
+Если credentials отсутствуют:
+
+```json
+{
+  "configured": false,
+  "reachable": false,
+  "authenticated": false,
+  "provider": "pinduoduo",
+  "code": "PDD_NOT_CONFIGURED"
+}
+```
+
+Frontend не должен писать:
+
+> API не работает
+
+если проблема конкретно в credentials.
+
+Показывать:
+
+> Pinduoduo API пока не настроен.
+
+---
+
+# 11. PDD ошибки
+
+Не показывать пользователю raw provider errors.
+
+Создать mapping:
+
+```text
+PDD_NOT_CONFIGURED
+PDD_AUTH_FAILED
+PDD_TIMEOUT
+PDD_RATE_LIMIT
+PDD_PROVIDER_ERROR
+PDD_INVALID_RESPONSE
+PDD_PRODUCT_NOT_FOUND
+```
+
+Frontend должен получать нормальные сообщения.
+
+---
+
+# 12. PDD timeout/retry
+
+Каждый внешний PDD request:
+
+```text
+timeout = 10 seconds
+```
+
+Retry:
+
+```text
+maximum 2 attempts
+```
+
+Не делать бесконечные retry.
+
+Добавить request ID.
+
+Логировать:
+
+```text
+requestId
+operation
+provider
+duration
+status
+error
+```
+
+Не логировать:
+
+* client secret;
+* access token;
+* payment secret.
+
+---
+
+# 13. PDD cache
+
+Использовать Redis.
+
+Кэшировать:
+
+```text
+categories
+product details
+popular searches
+```
+
+TTL определить отдельно:
+
+```text
+categories: 1 hour
+product detail: 5–15 minutes
+search: 1–5 minutes
+```
+
+При недоступности PDD отдавать cached data, если она есть.
+
+---
+
+# 14. Самая важная часть — единая модель товара
+
+Сейчас локальные Product и PDD Product фактически живут отдельно.
+
+Создать нормальную модель:
+
+```text
+Product
+```
+
+с:
+
+```text
+id
+source
+externalId
+title
+description
+price
+currency
+priceMinor
+imageUrl
+thumbnailUrl
+status
+metadata
+```
+
+`source`:
+
+```text
+LOCAL
+PDD
+```
+
+Для PDD:
+
+```text
+externalId = PDD product ID
+```
+
+Нельзя использовать PDD ID как внутренний database ID.
+
+---
+
+# 15. Product images
+
+Добавить:
+
+```text
+imageUrl
+thumbnailUrl
+gallery
+```
+
+или отдельную таблицу:
+
+```text
+ProductImage
+```
+
+Frontend должен реально показывать изображения.
+
+Если изображения отсутствуют:
+
+```text
+placeholder
+```
+
+а не сломанный `<img>`.
+
+---
+
+# 16. Исправить деньги
+
+Запрещается складывать:
+
+```text
+CNY + UZS
+```
+
+в одной арифметической операции.
+
+Ввести Money model:
+
+```text
+amountMinor
+currency
+```
+
+Поддержать:
+
+```text
+UZS
+CNY
+```
+
+Все расчёты внутри backend.
+
+Frontend получает:
+
+```json
+{
+  "amount": 199000,
+  "currency": "UZS",
+  "formatted": "199 000 сум"
+}
+```
+
+---
+
+# 17. Исправить `priceMinor`
+
+Выбрать единый стандарт:
+
+```text
+UZS:
+1 UZS = 100 tiyin
+
+CNY:
+1 CNY = 100 fen
+```
+
+Все seed данные привести к этому стандарту.
+
+Запретить использование float для финансовых расчётов.
+
+---
+
+# 18. Currency service
+
+Создать:
+
+```text
+CurrencyService
+```
+
+Методы:
+
+```text
+getRate()
+convert()
+```
+
+Например:
+
+```text
+CNY → UZS
+```
+
+Курс не должен быть захардкожен во frontend.
+
+Frontend получает готовую цену от backend.
+
+---
+
+# 19. Корзина — полностью переписать
+
+Frontend больше не должен хранить бизнес-корзину только в React state.
+
+API:
+
+```text
+GET    /cart
+POST   /cart/items
+PATCH  /cart/items/:id
+DELETE /cart/items/:id
+DELETE /cart
+```
+
+Frontend:
+
+```text
+addToCart()
+updateCartItem()
+removeCartItem()
+clearCart()
+loadCart()
+```
+
+После:
+
+```text
+login
+logout
+reload
+```
+
+корзина должна корректно восстанавливаться.
+
+---
+
+# 20. Cart item
+
+Cart item должен содержать:
+
+```text
+productId
+source
+externalProductId
+quantity
+unitPrice
+currency
+selectedVariant
+```
+
+Для PDD товаров обязательно сохранять внешний ID.
+
+---
+
+# 21. Checkout
+
+Checkout должен быть настоящим.
+
+Создать flow:
+
+```text
+GET /checkout/preview
+POST /checkout
+```
+
+Preview должен рассчитывать:
+
+```text
+products
+shipping
+service fee
+currency conversion
+discount
+total
+```
+
+Например:
+
+```json
+{
+  "subtotal": 350000,
+  "shipping": 30000,
+  "serviceFee": 10000,
+  "discount": 0,
+  "total": 390000,
+  "currency": "UZS"
+}
+```
+
+---
+
+# 22. Address
+
+Добавить модель:
+
+```text
+Address
+```
+
+Поля:
+
+```text
+userId
+country
+region
+city
+district
+street
+house
+apartment
+postalCode
+recipientName
+phone
+isDefault
+```
+
+Checkout должен использовать выбранный address.
+
+---
+
+# 23. Order
+
+Создание заказа:
+
+```text
+POST /orders
+```
+
+Должно происходить только через backend.
+
+Backend:
+
+1. проверяет пользователя;
+2. получает корзину;
+3. проверяет товары;
+4. проверяет цены;
+5. рассчитывает сумму;
+6. создаёт Order;
+7. создаёт OrderItems;
+8. очищает/резервирует корзину;
+9. создаёт payment intent;
+10. возвращает order + payment information.
+
+---
+
+# 24. Защита от двойного заказа
+
+Добавить:
+
+```text
+Idempotency-Key
+```
+
+на checkout.
+
+Если пользователь дважды нажал кнопку:
+
+```text
+Создать заказ
+```
+
+не должны появиться два заказа.
+
+---
+
+# 25. Order statuses
+
+Использовать понятный state machine:
+
+```text
+PENDING_PAYMENT
+PAID
+PROCESSING
+SHIPPED
+IN_TRANSIT
+DELIVERED
+CANCELLED
+REFUNDED
+```
+
+Переходы должны контролироваться backend.
+
+Frontend не может самостоятельно менять статус заказа.
+
+---
+
+# 26. Payment architecture
+
+Создать единый:
+
+```text
+PaymentAdapter
+```
+
+с реализациями:
+
+```text
+ClickAdapter
+PaymeAdapter
+PaynetAdapter
+```
+
+Интерфейс:
+
+```text
+createPayment()
+getPaymentStatus()
+handleCallback()
+refund()
+```
+
+---
+
+# 27. Payment flow
+
+Frontend:
+
+```text
+Checkout
+↓
+POST /payments
+↓
+Backend
+↓
+Provider
+↓
+paymentUrl
+↓
+Frontend redirect
+↓
+Provider callback
+↓
+Backend
+↓
+Payment = PAID
+↓
+Order = PAID
+```
+
+Нельзя делать:
+
+```text
+frontend → "payment successful"
+```
+
+без callback от платёжного провайдера.
+
+---
+
+# 28. Click
+
+Проверить и закончить:
+
+* create payment;
+* callback;
+* signature;
+* amount validation;
+* merchant validation;
+* duplicate callback;
+* transaction status.
+
+---
+
+# 29. Payme
+
+Закончить:
+
+```text
+CheckPerformTransaction
+CreateTransaction
+PerformTransaction
+CancelTransaction
+CheckTransaction
+GetStatement
+```
+
+`GetStatement` не должен всегда возвращать пустой массив.
+
+---
+
+# 30. Paynet
+
+Закончить:
+
+```text
+Authorization
+CheckPerformTransaction
+Create
+PerformTransaction
+Cancel
+Check
+```
+
+Удалить production-заглушки типа:
+
+```text
+Payment creation requires merchant account context
+```
+
+если credentials/configuration доступны.
+
+Если credentials отсутствуют — возвращать:
+
+```text
+PAYMENT_PROVIDER_NOT_CONFIGURED
+```
+
+---
+
+# 31. Payment security
+
+Каждый callback должен проверять:
+
+```text
+signature
+merchant ID
+amount
+order ID
+transaction ID
+duplicate transaction
+```
+
+Никогда не доверять:
+
+```text
+amount
+status
+orderId
+```
+
+из frontend.
+
+---
+
+# 32. Orders frontend
+
+Создать страницы:
+
+```text
+/orders
+/orders/:id
+```
+
+Показывать:
+
+```text
+номер заказа
+товары
+количество
+цена
+итого
+оплата
+статус
+доставка
+tracking
+```
+
+---
+
+# 33. Delivery abstraction
+
+Создать:
+
+```text
+DeliveryAdapter
+```
+
+Пока можно:
+
+```text
+MockDeliveryAdapter
+```
+
+Но API должен быть готов:
+
+```text
+createShipment()
+getTracking()
+cancelShipment()
+```
+
+Не утверждать в UI, что Uzum уже является подключённым партнёром, пока реальной интеграции нет.
+
+---
+
+# 34. Error handling
+
+Ввести единый формат:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "CART_EMPTY",
+    "message": "Корзина пуста",
+    "requestId": "..."
+  }
+}
+```
+
+Коды:
+
+```text
+AUTH_REQUIRED
+INVALID_OTP
+OTP_EXPIRED
+PRODUCT_NOT_FOUND
+CART_EMPTY
+CART_ITEM_NOT_FOUND
+INVALID_QUANTITY
+PRICE_CHANGED
+CHECKOUT_FAILED
+ORDER_NOT_FOUND
+PAYMENT_FAILED
+PAYMENT_NOT_CONFIGURED
+PDD_NOT_CONFIGURED
+PDD_TIMEOUT
+PDD_PROVIDER_ERROR
+DELIVERY_NOT_CONFIGURED
+```
+
+---
+
+# 35. Frontend loading/error states
+
+Каждая операция должна иметь:
+
+```text
+loading
+success
+error
+empty
+```
+
+Нельзя показывать:
+
+> API не работает
+
+при любой ошибке.
+
+Например:
+
+```text
+PDD unavailable
+```
+
+не должен ломать:
+
+```text
+LOCAL catalog
+```
+
+---
+
+# 36. Убрать глобальный `Promise.all`
+
+Не делать:
+
+```ts
+Promise.all([
+  products,
+  categories,
+  pdd,
+])
+```
+
+если отказ одного сервиса ломает весь экран.
+
+Использовать независимые состояния.
+
+Например:
+
+```text
+catalog: success
+categories: success
+pdd: error
+```
+
+Каталог продолжает работать.
+
+---
+
+# 37. Frontend routing
+
+Добавить нормальные routes:
+
+```text
+/
+ /catalog
+ /product/:id
+ /cart
+ /checkout
+ /orders
+ /orders/:id
+ /profile
+ /favorites
+ /support
+```
+
+404 page:
+
+```text
+Страница не найдена
+```
+
+---
+
+# 38. Кнопки
+
+Проверить каждую кнопку.
+
+Никаких декоративных кнопок.
+
+Каждая кнопка должна иметь:
+
+```text
+action
+loading
+disabled
+success
+error
+```
+
+Проверить:
+
+```text
+Поиск
+Категории
+Товар
+Добавить в корзину
++
+-
+Удалить
+Очистить корзину
+Войти
+Получить OTP
+Подтвердить OTP
+Checkout
+Выбрать адрес
+Создать заказ
+Оплатить
+Мои заказы
+Открыть заказ
+Повторить оплату
+Отменить
+Поддержка
+Избранное
+```
+
+---
+
+# 39. Search
+
+Поиск должен реально работать через backend:
+
+```text
+GET /catalog/search?q=...
+```
+
+Добавить:
+
+```text
+debounce 300–500ms
+loading
+empty state
+error state
+pagination
+```
+
+---
+
+# 40. PDD search
+
+Отдельно:
+
+```text
+GET /integrations/pdd/products/search
+```
+
+Frontend должен показывать:
+
+```text
+Источник: Pinduoduo
+```
+
+Но только если товар реально пришёл из PDD.
+
+---
+
+# 41. Не смешивать Local и PDD без маркировки
+
+Карточка товара должна иметь:
+
+```text
+source
+```
+
+Например:
+
+```text
+LOCAL
+PDD
+```
+
+UI:
+
+```text
+Pinduoduo
+```
+
+для внешнего товара.
+
+---
+
+# 42. API documentation
+
+Добавить Swagger/OpenAPI.
+
+Минимум:
+
+```text
+/auth
+/catalog
+/pdd
+/cart
+/checkout
+/orders
+/payments
+/delivery
+```
+
+---
+
+# 43. Logging
+
+Backend должен логировать:
+
+```text
+requestId
+method
+path
+status
+duration
+userId (если есть)
+```
+
+Для external providers:
+
+```text
+provider
+operation
+duration
+result
+```
+
+Не логировать secrets.
+
+---
+
+# 44. Database
+
+Проверить Prisma schema.
+
+Обеспечить индексы для:
+
+```text
+Product.externalId
+Product.source
+Product.status
+Order.userId
+Order.status
+Payment.orderId
+Payment.externalId
+Cart.userId
+CartItem.cartId
+```
+
+Добавить необходимые unique constraints.
+
+---
+
+# 45. Prisma migration
+
+После изменения schema:
+
+```bash
+npx prisma format
+npx prisma validate
+npx prisma generate
+npx prisma migrate dev
+npm run build
+```
+
+CI должен выполнять минимум:
+
+```text
+prisma validate
+prisma generate
+backend build
+frontend build
+```
+
+---
+
+# 46. Tests
+
+Создать минимум следующие тесты.
+
+### Auth
+
+```text
+request OTP
+verify valid OTP
+reject invalid OTP
+reject expired OTP
+rate limit
+```
+
+### Catalog
+
+```text
+get products
+search
+pagination
+not found
+```
+
+### Cart
+
+```text
+add
+update
+delete
+clear
+empty cart
+unauthorized
+```
+
+### Checkout
+
+```text
+valid checkout
+empty cart
+invalid address
+price change
+```
+
+### Orders
+
+```text
+create
+get
+cancel
+authorization
+duplicate idempotency
+```
+
+### PDD
+
+```text
+configured
+not configured
+timeout
+provider error
+invalid response
+```
+
+### Payments
+
+```text
+create
+callback
+invalid signature
+duplicate callback
+wrong amount
+```
+
+---
+
+# 47. E2E test
+
+Обязательный сценарий:
+
+```text
+Open website
+↓
+Search product
+↓
+Open product
+↓
+Add cart
+↓
+Login
+↓
+Cart remains
+↓
+Checkout
+↓
+Address
+↓
+Order
+↓
+Payment
+↓
+Order status
+```
+
+Этот тест должен проходить автоматически.
+
+---
+
+# 48. Docker
+
+`docker-compose.yml` должен позволять поднять:
+
+```text
+PostgreSQL
+Redis
+Backend
+```
+
+Frontend можно запускать отдельно в development.
+
+Добавить:
+
+```text
+healthcheck
+```
+
+для PostgreSQL/Redis/backend.
+
+---
+
+# 49. Environment validation
+
+При запуске backend проверять обязательные env.
+
+Например:
+
+```text
+DATABASE_URL
+JWT_SECRET
+```
+
+обязательны.
+
+PDD:
+
+```text
+PDD_CLIENT_ID
+PDD_CLIENT_SECRET
+```
+
+не обязательны для запуска приложения, но тогда:
+
+```text
+PDD status = NOT_CONFIGURED
+```
+
+Payment credentials аналогично.
+
+Backend не должен падать только потому, что PDD пока не подключён.
+
+---
+
+# 50. README
+
+Полностью обновить README.
+
+Должно быть:
+
+```text
+Requirements
+Installation
+Environment
+Database
+Redis
+Development
+Production
+API
+PDD configuration
+Payments
+Testing
+Docker
+Architecture
+```
+
+Пример:
+
+```bash
+git clone ...
+cd Pinduoduo-Uzbekistan
+
+docker compose up -d
+
+cd backend
+npm install
+npx prisma generate
+npm run start:dev
+```
+
+Отдельно объяснить:
+
+```text
+PDD credentials are required only for real PDD integration.
+```
+
+---
+
+# 51. Не использовать реальные секреты
+
+Проверить:
+
+```text
+.env
+*.key
+*.pem
+credentials
+tokens
+secrets
+```
+
+Они не должны попасть в Git.
+
+Добавить в `.gitignore`:
+
+```text
+.env
+.env.*
+!.env.example
+```
+
+---
+
+# 52. Repository security
+
+До публичного релиза:
+
+```text
+Repository → Private
+```
+
+если в репозитории находится коммерческая архитектура проекта.
+
+После стабилизации можно отдельно решить, какая часть должна быть public.
+
+---
+
+# 53. Что НЕ делать
+
+Запрещено:
+
+```text
+❌ scraping Pinduoduo
+❌ fake PDD API
+❌ fake payment success
+❌ hardcoded production credentials
+❌ хранить secrets frontend
+❌ складывать CNY + UZS
+❌ создавать заказ только frontend-ом
+❌ менять order status из frontend
+❌ говорить "API работает", если credentials отсутствуют
+❌ ломать local catalog из-за ошибки PDD
+❌ использовать mock как production data
+❌ удалять backend только ради упрощения
+```
+
+---
+
+# 54. Порядок реализации
+
+Работать строго по этапам.
+
+## Этап 1 — Infrastructure
+
+```text
+Environment
+Prisma
+Database
+Redis
+Docker
+Health
+Logging
+```
+
+## Этап 2 — API foundation
+
+```text
+API client
+Error format
+Auth middleware
+Validation
+Request ID
+```
+
+## Этап 3 — Auth
+
+```text
+OTP
+Token
+Session
+/me
+Logout
+Rate limit
+```
+
+## Этап 4 — Catalog
+
+```text
+Products
+Categories
+Search
+Product details
+Images
+Pagination
+```
+
+## Этап 5 — PDD
+
+```text
+PddAdapter
+PDD search
+PDD details
+PDD categories
+Status
+Timeout
+Retry
+Cache
+```
+
+## Этап 6 — Cart
+
+```text
+Backend cart
+Frontend cart
+Authentication
+Persistence
+PDD products
+Local products
+```
+
+## Этап 7 — Checkout
+
+```text
+Address
+Currency
+Price
+Shipping
+Fees
+Preview
+Order creation
+Idempotency
+```
+
+## Этап 8 — Payments
+
+```text
+Click
+Payme
+Paynet
+Callbacks
+Verification
+Payment status
+```
+
+## Этап 9 — Orders
+
+```text
+Order list
+Order detail
+Statuses
+Cancellation
+Payment state
+```
+
+## Этап 10 — Delivery
+
+```text
+DeliveryAdapter
+Tracking
+Status
+```
+
+## Этап 11 — Frontend
+
+```text
+Routing
+Pages
+Loading
+Errors
+Empty states
+Buttons
+Responsive UI
+```
+
+## Этап 12 — Tests
+
+```text
+Unit
+Integration
+E2E
+CI
+```
+
+---
+
+# 55. Definition of Done
+
+Проект считается исправленным только если выполняется всё ниже.
+
+### Frontend
+
+* [ ] сайт запускается;
+* [ ] нет критических console errors;
+* [ ] все основные кнопки работают;
+* [ ] каталог работает;
+* [ ] поиск работает;
+* [ ] карточка товара работает;
+* [ ] PDD товары отображаются при настроенном PDD API;
+* [ ] login работает;
+* [ ] token реально используется;
+* [ ] корзина сохраняется на backend;
+* [ ] reload не уничтожает корзину;
+* [ ] checkout работает;
+* [ ] заказ создаётся;
+* [ ] payment flow работает;
+* [ ] orders работают;
+* [ ] ошибки отображаются корректно.
+
+### Backend
+
+* [ ] build проходит;
+* [ ] Prisma generate проходит;
+* [ ] Prisma validate проходит;
+* [ ] database работает;
+* [ ] Redis работает;
+* [ ] auth работает;
+* [ ] catalog работает;
+* [ ] PDD adapter работает;
+* [ ] cart работает;
+* [ ] checkout работает;
+* [ ] orders работают;
+* [ ] payments имеют callback;
+* [ ] idempotency работает;
+* [ ] rate limiting работает;
+* [ ] error handling унифицирован.
+
+### PDD
+
+При отсутствии credentials:
+
+```text
+PDD = NOT_CONFIGURED
+```
+
+При наличии credentials:
+
+```text
+PDD status = HEALTHY
+```
+
+и:
+
+```text
+search
+details
+categories
+```
+
+должны реально возвращать данные.
+
+Необходимо отдельно документировать, какие операции PDD доступны предоставленному аккаунту/API, а какие пока являются неподдерживаемыми.
+
+### CI
+
+Последовательность:
+
+```text
+npm install
+↓
+prisma validate
+↓
+prisma generate
+↓
+backend build
+↓
+frontend build
+↓
+tests
+```
+
+должна проходить без ошибок.
+
+---
+
+# 56. Финальная архитектура
+
+После исправления:
+
+```text
+                    ┌──────────────────┐
+                    │    FRONTEND      │
+                    │                  │
+                    │ Catalog          │
+                    │ Product          │
+                    │ Cart             │
+                    │ Checkout         │
+                    │ Orders           │
+                    │ Profile          │
+                    └────────┬─────────┘
+                             │
+                         REST API
+                             │
+                             ▼
+                 ┌──────────────────────┐
+                 │       BACKEND        │
+                 │                      │
+                 │ Auth                 │
+                 │ Catalog              │
+                 │ Cart                 │
+                 │ Checkout             │
+                 │ Orders               │
+                 │ Payments             │
+                 │ Delivery             │
+                 └───────┬───────┬──────┘
+                         │       │
+             ┌───────────┘       └────────────┐
+             ▼                                ▼
+       PostgreSQL                            Redis
+             │
+             │
+     ┌───────┴────────┐
+     ▼                ▼
+PDD Adapter       Payment Adapter
+     │                │
+     ▼                ▼
+ Pinduoduo       Click/Payme/Paynet
+```
+
+---
+
+# 57. Итоговая цель
+
+После выполнения ТЗ пользователь должен воспринимать сайт не как демонстрационный prototype, а как настоящий работающий e-commerce MVP.
+
+Нельзя оставлять состояние:
+
+```text
+"Кнопка есть, но пока ничего не делает"
+```
+
+или:
+
+```text
+"API есть, но frontend его не использует"
+```
+
+или:
+
+```text
+"Payment backend есть, но checkout его не вызывает"
+```
+
+или:
+
+```text
+"PDD search работает, но товар нельзя провести через cart → checkout → order"
+```
+
+Каждая основная функция должна пройти полный путь:
+
+```text
+UI
+↓
+API
+↓
+Business logic
+↓
+Database/provider
+↓
+Response
+↓
+UI
+```
+
+После завершения обязательно выполнить финальный аудит всего репозитория и предоставить отчёт:
+
+```text
+BUILD: PASS/FAIL
+DATABASE: PASS/FAIL
+AUTH: PASS/FAIL
+CATALOG: PASS/FAIL
+PDD: PASS/FAIL
+CART: PASS/FAIL
+CHECKOUT: PASS/FAIL
+ORDERS: PASS/FAIL
+CLICK: PASS/FAIL
+PAYME: PASS/FAIL
+PAYNET: PASS/FAIL
+DELIVERY: PASS/FAIL
+E2E: PASS/FAIL
+CI: PASS/FAIL
+```
+
+А также список всех оставшихся `TODO`, `FIXME`, mock/stub участков и функций, которые требуют реальных credentials или официального доступа Pinduoduo.
