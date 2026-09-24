@@ -33,26 +33,34 @@ async function main() {
   ] as const;
 
   for (const [titleRu, titleUz, categoryName, priceMinor] of products) {
-    await prisma.product.upsert({
-      where: { supplierProductRef: `demo-${categoryName}-${titleRu}` },
-      update: {
-        titleRu,
-        titleUz,
-        categoryId: categoryMap.get(categoryName),
-        currency: "UZS",
-        priceMinor,
-        status: "ACTIVE"
-      },
-      create: {
-        titleRu,
-        titleUz,
-        categoryId: categoryMap.get(categoryName),
-        currency: "UZS",
-        priceMinor,
-        status: "ACTIVE",
-        supplierProductRef: `demo-${categoryName}-${titleRu}`
-      }
-    });
+    const supplierProductRef = `demo-${categoryName}-${titleRu}`;
+    const existing = await prisma.product.findFirst({ where: { supplierProductRef } });
+
+    if (existing) {
+      await prisma.product.update({
+        where: { id: existing.id },
+        data: {
+          titleRu,
+          titleUz,
+          categoryId: categoryMap.get(categoryName),
+          currency: "UZS",
+          priceMinor,
+          status: "ACTIVE"
+        }
+      });
+    } else {
+      await prisma.product.create({
+        data: {
+          titleRu,
+          titleUz,
+          categoryId: categoryMap.get(categoryName),
+          currency: "UZS",
+          priceMinor,
+          status: "ACTIVE",
+          supplierProductRef
+        }
+      });
+    }
   }
 
   console.log("Local demo catalog seeded.");
