@@ -12,6 +12,7 @@ import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { RequestIdMiddleware } from "./common/request-id.middleware";
 import { CurrencyModule } from "./modules/currency/currency.module";
 import { AddressesModule } from "./modules/addresses/addresses.module";
+import { PaymentsModule } from "./modules/payments/payments.module";
 
 @Module({
   imports: [
@@ -24,7 +25,8 @@ import { AddressesModule } from "./modules/addresses/addresses.module";
     CheckoutModule,
     IntegrationsModule,
     CurrencyModule,
-    AddressesModule
+    AddressesModule,
+    PaymentsModule
   ],
   controllers: [HealthController]
 })
