@@ -29,7 +29,7 @@ export class PinduoduoService {
     const body:Record<string,unknown>={...params,type,client_id:clientId,timestamp:Math.floor(Date.now()/1000),data_type:"JSON"};
     const token=this.config.get<string>("PDD_ACCESS_TOKEN"); if(token) body.access_token=token; body.sign=this.sign(body);
     let response:Response;
-    try { response=await fetch(this.gateway,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded;charset=UTF-8"},body:new URLSearchParams(Object.entries(body).reduce<Record<string,string>>((acc,[key,value])=>{acc[key]=typeof value==="object"?JSON.stringify(value):String(value);return acc;},{}))}); }
+    try { response=await fetch(this.gateway,{signal:AbortSignal.timeout(10_000),method:"POST",headers:{"content-type":"application/x-www-form-urlencoded;charset=UTF-8"},body:new URLSearchParams(Object.entries(body).reduce<Record<string,string>>((acc,[key,value])=>{acc[key]=typeof value==="object"?JSON.stringify(value):String(value);return acc;},{}))}); }
     catch(error) { throw new BadGatewayException({code:"PDD_NETWORK_ERROR",message:"Pinduoduo gateway could not be reached",cause:error instanceof Error?error.message:String(error)}); }
     let data:Record<string,unknown>; try { data=await response.json() as Record<string,unknown>; } catch { throw new BadGatewayException({code:"PDD_INVALID_RESPONSE",message:"Pinduoduo returned a non-JSON response"}); }
     if(!response.ok||data.error_response) throw new BadGatewayException({code:"PDD_PROVIDER_ERROR",httpStatus:response.status,response:data});

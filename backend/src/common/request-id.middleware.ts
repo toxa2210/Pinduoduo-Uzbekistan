@@ -1,13 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { Injectable, NestMiddleware } from "@nestjs/common";
-import type { Request, Response, NextFunction } from "express";
-
-@Injectable()
-export class RequestIdMiddleware implements NestMiddleware {
-  use(req: Request, res: Response, next: NextFunction) {
-    const id = req.header("x-request-id") || randomUUID();
-    res.setHeader("x-request-id", id);
-    (req as Request & { requestId?: string }).requestId = id;
-    next();
-  }
-}
+import { randomUUID } from "node:crypto";
+@Injectable() export class RequestIdMiddleware implements NestMiddleware { use(req:any,res:any,next:()=>void){const id=req.headers?.["x-request-id"]||randomUUID();res.setHeader("x-request-id",id);next();} }

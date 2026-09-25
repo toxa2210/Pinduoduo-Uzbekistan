@@ -1,0 +1,1 @@
+export function ErrorState({message}:{message:string}){return <div role="alert">{message}</div>}

@@ -10,6 +10,9 @@ import { CheckoutModule } from "./modules/checkout/checkout.module";
 import { IntegrationsModule } from "./modules/integrations/integrations.module";
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { RequestIdMiddleware } from "./common/request-id.middleware";
+import { CurrencyModule } from "./modules/currency/currency.module";
+import { AddressesModule } from "./modules/addresses/addresses.module";
+import { PaymentsModule } from "./modules/payments/payments.module";
 
 @Module({
   imports: [
@@ -20,7 +23,10 @@ import { RequestIdMiddleware } from "./common/request-id.middleware";
     CartModule,
     OrdersModule,
     CheckoutModule,
-    IntegrationsModule
+    IntegrationsModule,
+    CurrencyModule,
+    AddressesModule,
+    PaymentsModule
   ],
   controllers: [HealthController]
 })

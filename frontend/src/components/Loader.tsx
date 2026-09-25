@@ -1,0 +1,1 @@
+export function Loader(){return <div role="status" aria-label="Загрузка">Загрузка…</div>}

@@ -1,0 +1,2 @@
+import { Injectable } from "@nestjs/common"; import { PrismaService } from "../../database/prisma.service";
+@Injectable() export class AddressesService { constructor(private readonly prisma:PrismaService){} list(userId:string){return this.prisma.address.findMany({where:{userId},orderBy:[{isDefault:"desc"},{createdAt:"desc"}]});} create(userId:string,data:any){return this.prisma.$transaction(async tx=>{if(data.isDefault)await tx.address.updateMany({where:{userId},data:{isDefault:false}});return tx.address.create({data:{...data,userId}});});} }

@@ -6,7 +6,7 @@
     "dev": "nest start --watch",
     "start": "nest start",
     "build": "nest build",
-    "test": "jest",
+    "test": "jest --config jest.config.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
@@ -32,6 +32,7 @@
     "prisma": "^6.0.0",
     "tsx": "^4.19.0",
     "ts-jest": "^29.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "@types/jest": "^30.0.0"
   }
 }

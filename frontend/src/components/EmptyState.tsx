@@ -1,0 +1,1 @@
+export function EmptyState({message}:{message:string}){return <div>{message}</div>}
