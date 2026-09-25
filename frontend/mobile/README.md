@@ -1,17 +1,10 @@
-# Android application
+# Pinduoduo Uzbekistan Mobile
 
-Recommended implementation: Kotlin + Jetpack Compose.
+Android-first Expo/React Native client.
 
-Initial screens:
-1. Splash / language
-2. Phone OTP
-3. Home
-4. Categories
-5. Search
-6. Product details
-7. Cart
-8. Checkout
-9. Orders
-10. Profile
+## Run
+1. Copy .env.example to .env and set EXPO_PUBLIC_API_URL.
+2. Run npm install.
+3. Run npm run android.
 
-The app communicates with /api/v1 only.
+The visual tokens follow docs/design-system.md. Backend remains the source of truth for catalog, cart, checkout, orders and payments.

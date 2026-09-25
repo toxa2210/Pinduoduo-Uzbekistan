@@ -1,0 +1,3 @@
+const API_URL=process.env.EXPO_PUBLIC_API_URL||"http://localhost:8000/api/v1";
+export async function api<T>(path:string,init?:RequestInit):Promise<T>{const r=await fetch(API_URL+path,{...init,headers:{"content-type":"application/json",...(init?.headers||{})}});if(!r.ok)throw new Error(await r.text());return r.json();}
+export const catalog={list:(q="")=>api<{items:any[];total:number}>("/products?search="+encodeURIComponent(q)),product:(id:string)=>api<any>("/products/"+id),categories:()=>api<any[]>("/categories")};
