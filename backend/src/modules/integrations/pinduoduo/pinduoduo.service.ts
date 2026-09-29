@@ -11,10 +11,14 @@ export type PddProduct = {
 @Injectable()
 export class PinduoduoService {
   private readonly defaultGateway = "https://open-api.pinduoduo.com/api/router";
+  private readonly defaultTimeoutMs = 10_000;
+  private readonly defaultRetries = 2;
   constructor(private readonly config: ConfigService) {}
+  private get timeoutMs(): number { const value = Number(this.config.get<string>("PDD_TIMEOUT_MS") ?? this.defaultTimeoutMs); return Number.isFinite(value) && value > 0 ? value : this.defaultTimeoutMs; }
+  private get maxRetries(): number { const value = Number(this.config.get<string>("PDD_MAX_RETRIES") ?? this.defaultRetries); return Number.isInteger(value) && value >= 0 ? Math.min(value, 3) : this.defaultRetries; }
   private get gateway() { return this.config.get<string>("PDD_API_URL") || this.defaultGateway; }
   isConfigured() { return Boolean(this.config.get<string>("PDD_CLIENT_ID") && this.config.get<string>("PDD_CLIENT_SECRET")); }
-  status() { return { provider:"pinduoduo", configured:this.isConfigured(), gateway:this.gateway, accessTokenConfigured:Boolean(this.config.get<string>("PDD_ACCESS_TOKEN")) }; }
+  status() { return { provider:"pinduoduo", configured:this.isConfigured(), gateway:this.gateway, accessTokenConfigured:Boolean(this.config.get<string>("PDD_ACCESS_TOKEN")), timeoutMs:this.timeoutMs, maxRetries:this.maxRetries }; }
 
   private sign(params: Record<string, unknown>): string {
     const secret=this.config.get<string>("PDD_CLIENT_SECRET");
