@@ -4,15 +4,17 @@ This repository keeps provider secrets outside Git. Copy `backend/.env.example` 
 
 ## AliExpress
 
-The full signed-in AliExpress OpenService export is stored in [docs/pinduoduo-open-api](pinduoduo-open-api/README.md). It contains 197 methods across 18 sections. The backend currently exposes the first safe affiliate/catalog slice under `/api/v1/integrations/aliexpress`:
+The AliExpress Open Platform app credentials are configured on the backend only; never put the app secret or access token in frontend variables. Add `ALIEXPRESS_APP_KEY` and `ALIEXPRESS_APP_SECRET` (and, when issued, `ALIEXPRESS_ACCESS_TOKEN`) to the backend environment in Render or `backend/.env` locally. `ALIEXPRESS_API_URL` defaults to `https://api-sg.aliexpress.com/sync`.
 
-- `GET /affiliate/products` -> `aliexpress.affiliate.hotproduct.query`
+The signed-in Open Platform reference is in [docs/aliexpress-open-api](aliexpress-open-api/README.md). The backend exposes an affiliate/catalog slice under `/api/v1/integrations/aliexpress`:
+
+- `GET /affiliate/products?keywords=phone&category_ids=...&page_no=1&page_size=20&target_currency=CNY` -> `aliexpress.affiliate.hotproduct.query`
 - `GET /affiliate/categories` -> `aliexpress.affiliate.category.get`
 - `GET /affiliate/links` -> `aliexpress.affiliate.link.generate`
 - `GET /affiliate/orders` -> `aliexpress.affiliate.order.list`
 - `GET /affiliate/orders/detail` -> `aliexpress.affiliate.order.get`
 
-Environment: `ALIEXPRESS_API_URL`, `ALIEXPRESS_APP_KEY`, `ALIEXPRESS_APP_SECRET`, and optional `ALIEXPRESS_ACCESS_TOKEN`. Credentials stay server-side. Seller mutations and fulfillment APIs remain in the downloaded reference and are not exposed publicly by default.
+The frontend loads live affiliate categories and products through these backend routes. The displayed CNY prices are converted using `VITE_CNY_TO_UZS` (defaults to `1800`). Confirm the app has access to Affiliate API methods and is approved for live data; test-status apps may only return sandbox/test results. Seller mutations and fulfillment APIs remain in the API reference and are not exposed publicly by default.
 
 ## Click
 

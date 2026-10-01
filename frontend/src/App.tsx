@@ -169,8 +169,11 @@ export function App() {
     setCatalogError("");
     const timer = window.setTimeout(() => {
       const filters = {
-        ...(search.trim() ? { keyword: search.trim() } : {}),
-        ...(selectedCat !== "all" ? { category_id: selectedCat } : {}),
+        ...(search.trim() ? { keywords: search.trim() } : {}),
+        ...(selectedCat !== "all" ? { category_ids: selectedCat } : {}),
+        page_no: 1,
+        page_size: 20,
+        target_currency: "CNY",
       };
       const load = api.aliexpress.hotProducts(filters);
       load.then((payload) => {

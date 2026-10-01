@@ -17,3 +17,11 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      - key: ALIEXPRESS_API_URL
+        value: https://api-sg.aliexpress.com/sync
+      - key: ALIEXPRESS_APP_KEY
+        sync: false
+      - key: ALIEXPRESS_APP_SECRET
+        sync: false
+      - key: ALIEXPRESS_ACCESS_TOKEN
+        sync: false
