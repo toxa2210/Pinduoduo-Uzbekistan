@@ -1,0 +1,12 @@
+{
+  "name": "URIONA",
+  "short_name": "URIONA",
+  "description": "Global technology marketplace for Uzbekistan",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#040817",
+  "theme_color": "#040817",
+  "icons": [
+    { "src": "/uriona-logo.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -23,10 +23,10 @@ async function bootstrap() {
 
   app.setGlobalPrefix("api/v1");
 
-  const port = Number(process.env.APP_PORT ?? 8000);
+  const port = Number(process.env.PORT ?? process.env.APP_PORT ?? 8000);
   await app.listen(port);
 
-  console.log(`Pinduoduo Uzbekistan API running on http://localhost:${port}/api/v1`);
+  console.log(`Uriona API running on http://localhost:${port}/api/v1`);
 }
 
 bootstrap();

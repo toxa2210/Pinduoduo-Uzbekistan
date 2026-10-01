@@ -1,4 +1,4 @@
-# Pinduoduo Uzbekistan
+# Uriona
 
 Cross-border e-commerce platform for Uzbekistan.
 

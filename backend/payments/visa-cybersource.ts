@@ -1,5 +1,5 @@
 /**
- * Pinduoduo Uzbekistan — Visa payment adapter
+ * Uriona — Visa payment adapter
  *
  * Provider: Visa / Cybersource
  * API: Cybersource REST Payments API

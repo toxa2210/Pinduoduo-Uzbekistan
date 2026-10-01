@@ -2,24 +2,17 @@
 
 This repository keeps provider secrets outside Git. Copy `backend/.env.example` to a local `.env`.
 
-## Pinduoduo
+## AliExpress
 
-Gateway: `https://gw-api.pinduoduo.com/api/router`.
+The full signed-in AliExpress OpenService export is stored in [docs/pinduoduo-open-api](pinduoduo-open-api/README.md). It contains 197 methods across 18 sections. The backend currently exposes the first safe affiliate/catalog slice under `/api/v1/integrations/aliexpress`:
 
-Implemented:
-- `pdd.ddk.goods.search`
-- `pdd.ddk.goods.detail`
-- `pdd.goods.cats.get`
-- `pdd.ddk.mall.goods.list.get`
+- `GET /affiliate/products` -> `aliexpress.affiliate.hotproduct.query`
+- `GET /affiliate/categories` -> `aliexpress.affiliate.category.get`
+- `GET /affiliate/links` -> `aliexpress.affiliate.link.generate`
+- `GET /affiliate/orders` -> `aliexpress.affiliate.order.list`
+- `GET /affiliate/orders/detail` -> `aliexpress.affiliate.order.get`
 
-The adapter signs requests server-side with MD5 and never exposes `PDD_CLIENT_SECRET` to the browser.
-
-Environment:
-- `PDD_CLIENT_ID`
-- `PDD_CLIENT_SECRET`
-- `PDD_ACCESS_TOKEN` (only when the selected API method requires OAuth)
-
-Important: API access is subject to Pinduoduo application approval and per-method permissions. A public API endpoint is not an anonymous API.
+Environment: `ALIEXPRESS_API_URL`, `ALIEXPRESS_APP_KEY`, `ALIEXPRESS_APP_SECRET`, and optional `ALIEXPRESS_ACCESS_TOKEN`. Credentials stay server-side. Seller mutations and fulfillment APIs remain in the downloaded reference and are not exposed publicly by default.
 
 ## Click
 

@@ -1,6 +1,6 @@
 # Backend
 
-NestJS + Prisma backend for Pinduoduo Uzbekistan.
+NestJS + Prisma backend for Uriona. AliExpress is the external catalog provider.
 
 ## Local development
 

@@ -1,15 +1,44 @@
-import { Body, Controller, Get, Headers, Post } from "@nestjs/common";
-import { IsNotEmpty, IsString } from "class-validator";
+import { Body, Controller, Get, Headers, Patch, Post, UnauthorizedException } from "@nestjs/common";
+import { IsEmail, IsOptional, IsString, MinLength } from "class-validator";
 import { AuthService } from "./auth.service";
 
-class PhoneDto { @IsString() @IsNotEmpty() phone!: string; }
-class VerifyDto extends PhoneDto { @IsString() @IsNotEmpty() code!: string; }
+class CredentialsDto {
+  @IsEmail() email!: string;
+  @IsString() @MinLength(8) password!: string;
+}
+
+class ProfileDto {
+  @IsOptional() @IsString() phone?: string;
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsEmail() email?: string;
+  @IsOptional() @IsString() city?: string;
+  @IsOptional() @IsString() address?: string;
+  @IsOptional() @IsString() language?: string;
+}
 
 @Controller("auth")
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
-  @Post("request-otp") request(@Body() body: PhoneDto) { return this.auth.requestOtp(body.phone); }
-  @Post("verify-otp") verify(@Body() body: VerifyDto) { return this.auth.verifyOtp(body.phone, body.code); }
-  @Get("me") async me(@Headers("authorization") authorization?: string) { return this.auth.validateSession(authorization?.replace(/^Bearer\s+/i, "") ?? ""); }
-  @Post("logout") async logout(@Headers("authorization") authorization?: string) { return this.auth.logout(authorization?.replace(/^Bearer\s+/i, "") ?? ""); }
+
+  @Post("register")
+  register(@Body() body: CredentialsDto) { return this.auth.register(body.email, body.password); }
+
+  @Post("login")
+  login(@Body() body: CredentialsDto) { return this.auth.login(body.email, body.password); }
+
+  @Get("profile")
+  profile(@Headers("authorization") authorization?: string) {
+    return this.auth.getProfile(this.requireToken(authorization));
+  }
+
+  @Patch("profile")
+  updateProfile(@Headers("authorization") authorization: string | undefined, @Body() body: ProfileDto) {
+    return this.auth.updateProfile(this.requireToken(authorization), body);
+  }
+
+  private requireToken(authorization?: string) {
+    const token = authorization?.replace(/^Bearer\s+/i, "").trim();
+    if (!token) throw new UnauthorizedException("Bearer token is required");
+    return token;
+  }
 }

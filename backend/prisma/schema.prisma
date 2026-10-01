@@ -38,23 +38,32 @@ enum PaymentStatus {
 
 model User {
   id            String         @id @default(cuid())
-  phone         String         @unique
+  phone         String?        @unique
+  email         String?        @unique
+  passwordHash  String?
+  name          String?
+  city          String?
+  address       String?
+  language      String          @default("ru")
   role          UserRole       @default(CUSTOMER)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   orders        Order[]
   sessions      Session[]
+  otpChallenges OtpChallenge[]
   cart          Cart?
 }
 
 model OtpChallenge {
-  id         String    @id @default(cuid())
-  phone      String
-  codeHash   String
-  expiresAt  DateTime
-  attempts   Int       @default(0)
+  id        String    @id @default(cuid())
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone     String
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int       @default(0)
   consumedAt DateTime?
-  createdAt  DateTime  @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([phone, expiresAt])
 }
@@ -103,36 +112,36 @@ model Category {
 }
 
 model Product {
-  id                 String       @id @default(cuid())
-  categoryId         String?
-  category           Category?    @relation(fields: [categoryId], references: [id])
-  titleUz            String
-  titleRu            String?
-  descriptionUz      String?
-  descriptionRu      String?
-  currency           String       @default("CNY")
-  priceMinor         Int
-  status             ProductStatus @default(DRAFT)
+  id                String        @id @default(cuid())
+  categoryId        String?
+  category          Category?     @relation(fields: [categoryId], references: [id])
+  titleUz           String
+  titleRu           String?
+  descriptionUz     String?
+  descriptionRu     String?
+  currency          String        @default("CNY")
+  priceMinor        Int
+  status            ProductStatus @default(DRAFT)
   supplierProductRef String?
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
-  orderItems         OrderItem[]
-  cartItems          CartItem[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  orderItems        OrderItem[]
+  cartItems         CartItem[]
 
   @@index([categoryId])
   @@index([status])
 }
 
 model Order {
-  id              String        @id @default(cuid())
+  id              String      @id @default(cuid())
   userId          String
-  user            User          @relation(fields: [userId], references: [id])
-  status          OrderStatus   @default(CREATED)
+  user            User        @relation(fields: [userId], references: [id])
+  status          OrderStatus @default(CREATED)
   totalMinor      Int
-  currency        String        @default("UZS")
+  currency        String      @default("UZS")
   deliveryAddress String
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
   items           OrderItem[]
   payments        Payment[]
 
@@ -141,12 +150,12 @@ model Order {
 }
 
 model OrderItem {
-  id             String  @id @default(cuid())
-  orderId        String
-  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId      String
-  product        Product @relation(fields: [productId], references: [id])
-  quantity       Int
+  id            String  @id @default(cuid())
+  orderId       String
+  order         Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product @relation(fields: [productId], references: [id])
+  quantity      Int
   unitPriceMinor Int
 
   @@index([orderId])

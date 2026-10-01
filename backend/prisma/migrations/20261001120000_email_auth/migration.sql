@@ -1,0 +1,3 @@
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "passwordHash" TEXT;
+ALTER TABLE "User" ALTER COLUMN "phone" DROP NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");

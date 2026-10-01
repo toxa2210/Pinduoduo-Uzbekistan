@@ -22,6 +22,8 @@ coverage/
 .cache/
 .tmp/
 temp/
+*.tsbuildinfo
+netlify-deploy/
 
 # IDE / OS
 .vscode/*
