@@ -5,14 +5,19 @@ import { AppModule } from "./app.module";
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  const allowedOrigins = new Set([
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://uriona.uz",
+    "https://www.uriona.uz",
+    "https://uriona-frontend.onrender.com",
+    ...(process.env.FRONTEND_URL?.split(",").map((value) => value.trim()) ?? [])
+  ]);
   app.enableCors({
-    origin: process.env.FRONTEND_URL?.split(",").map((value) => value.trim()).concat("https://uriona-frontend.onrender.com") ?? [
-      "http://localhost:5173",
-      "http://127.0.0.1:5173",
-      "https://uriona.uz",
-      "https://www.uriona.uz",
-      "https://uriona-frontend.onrender.com"
-    ],
+    origin: (requestOrigin, callback) => {
+      const isRenderPreview = requestOrigin?.endsWith(".onrender.com") ?? false;
+      callback(null, !requestOrigin || allowedOrigins.has(requestOrigin) || isRenderPreview);
+    },
     credentials: true
   });
 
