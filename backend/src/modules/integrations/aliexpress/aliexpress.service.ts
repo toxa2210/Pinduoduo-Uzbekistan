@@ -323,7 +323,7 @@ export class AliexpressService {
         ? data.error_response as Record<string, unknown>
         : nestedError && typeof nestedError === "object"
           ? nestedError as Record<string, unknown>
-          : methodResponse?.error_code
+          : methodResponse?.error_code || (responseCode !== undefined && !["0", "200"].includes(String(responseCode)))
             ? methodResponse
             : data;
       const code = error.code ?? error.error_code;
