@@ -316,7 +316,7 @@ export class AliexpressService {
       || data.error_code
       || nestedError
       || methodResponse?.error_code
-      || (responseCode !== undefined && !["0", "200"].includes(String(responseCode)))
+      || (responseCode !== undefined && !/^0+$/.test(String(responseCode)) && String(responseCode) !== "200")
     );
     if (!response.ok || hasError) {
       const error = data.error_response && typeof data.error_response === "object"
@@ -327,7 +327,7 @@ export class AliexpressService {
             ? methodResponse
             : data;
       const code = error.code ?? error.error_code;
-      const message = error.msg ?? error.message ?? error.error_message;
+      const message = error.msg ?? error.message ?? error.error_message ?? methodResponse?.msg ?? data.msg;
       throw new ServiceUnavailableException({
         provider: "aliexpress",
         code: code ? String(code) : undefined,
@@ -390,6 +390,7 @@ export class AliexpressService {
     pageSize?: string;
     sortBy?: string;
     currency?: string;
+    countryCode?: string;
   }) {
     const keyWord = params.keyWord?.trim();
     if (keyWord && keyWord.length > 100) {
@@ -414,12 +415,16 @@ export class AliexpressService {
     if (!/^[A-Z]{3}$/.test(currency)) {
       throw new BadRequestException("currency must be a three-letter uppercase currency code");
     }
+    const countryCode = params.countryCode ?? "UZ";
+    if (!/^[A-Z]{2}$/.test(countryCode)) {
+      throw new BadRequestException("countryCode must be a two-letter uppercase country code");
+    }
 
     return this.call("aliexpress.ds.text.search", {
       ...(keyWord ? { keyWord } : {}),
       ...(params.categoryId ? { categoryId: params.categoryId } : {}),
       local: "en_US",
-      countryCode: "UZ",
+      countryCode,
       pageSize,
       pageIndex,
       sortBy,

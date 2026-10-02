@@ -57,7 +57,8 @@ export class AliexpressController {
     @Query("pageIndex") pageIndex?: string,
     @Query("pageSize") pageSize?: string,
     @Query("sortBy") sortBy?: string,
-    @Query("currency") currency?: string
+    @Query("currency") currency?: string,
+    @Query("countryCode") countryCode?: string
   ) {
     return this.aliexpress.dropshippingProducts({
       keyWord,
@@ -65,7 +66,8 @@ export class AliexpressController {
       pageIndex,
       pageSize,
       sortBy,
-      currency
+      currency,
+      countryCode
     });
   }
 
