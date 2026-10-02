@@ -326,8 +326,8 @@ export class AliexpressService {
           : methodResponse?.error_code || (responseCode !== undefined && !["0", "200"].includes(String(responseCode)))
             ? methodResponse
             : data;
-      const code = error.code ?? error.error_code;
-      const message = error.msg ?? error.message ?? error.error_message ?? methodResponse?.msg ?? data.msg;
+      const code = error.code ?? error.error_code ?? error.sub_code;
+      const message = error.sub_msg ?? error.msg ?? error.message ?? error.error_message ?? methodResponse?.msg ?? data.msg;
       throw new ServiceUnavailableException({
         provider: "aliexpress",
         code: code ? String(code) : undefined,
