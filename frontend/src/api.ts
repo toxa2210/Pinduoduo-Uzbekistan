@@ -120,7 +120,8 @@ export function mapMarketplaceGoods(payload: unknown, priceCurrency: "CNY" | "UZ
     const rawDiscount = firstString(goods.coupon_discount, goods.discount);
     const discount = Number(rawDiscount.replace("%", "")) || (originalPrice > price ? originalPrice - price : 0);
     const categoryIds = Array.isArray(goods.cat_ids) ? goods.cat_ids : [];
-    const categoryId = firstString(goods.first_level_category_id, goods.category_id, goods.cat_id, goods.cateId, categoryIds[0], goods.goods_cat_id) || null;
+    const categoryId = firstString(goods.first_level_category_id, goods.category_id, goods.cat_id, goods.cateId, categoryIds[0], goods.goods_cat_id)
+      .split(",")[0] || null;
     const title = firstString(goods.product_title, goods.goods_name, goods.goods_title, goods.title) || "Товар маркетплейса";
     const description = firstString(goods.product_detail_url, goods.itemUrl, goods.goods_desc, goods.goods_description, goods.description);
     const imageUrls = asObject(goods.product_main_image_url);

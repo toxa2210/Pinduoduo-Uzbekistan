@@ -31,6 +31,17 @@ import { firebaseAuth, firebaseConfigReady } from "./firebase";
 
 const navItems = ["Главная", "Категории", "Корзина", "Профиль"] as const;
 type Language = "ru" | "en" | "uz";
+const HOME_RECOMMENDATION_KEYWORDS = ["phone", "home decor", "kitchen", "women fashion", "watch", "toys", "bag", "beauty"];
+
+function shuffleItems<T>(items: T[]): T[] {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
+}
+
 const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object.assign({}, {
   "Личный кабинет": { en: "My account", uz: "Shaxsiy kabinet" },
   "Обзор": { en: "Overview", uz: "Umumiy ma’lumot" },
@@ -586,7 +597,8 @@ const translations = {
     search: "Ищите товары и бренды", profileOpen: "Профиль открыт", cartOpen: "Корзина открыта", start: "Начать покупки",
     heroTitle: "Мировые товары", heroAccent: "по честной цене", heroText: "Выбираем товары у проверенных продавцов и доставляем их в Узбекистан.",
     safe: "Безопасная оплата", deliveryUz: "Доставка в Узбекистан", categoriesQuick: "Быстрый выбор", allCategories: "Все категории",
-    best: "Лучшие предложения", popular: "Популярные товары", seeAll: "Смотреть всё", payments: "Платежи", shipping: "Доставка",
+    best: "Лучшие предложения", popular: "Популярные товары", forYou: "Случайная подборка для вас",
+    searchResults: (query: string) => `Товары по запросу «${query}»`, seeAll: "Смотреть всё", payments: "Платежи", shipping: "Доставка",
     catalogPdd: "Категория AliExpress", all: "Все категории", tags: "Все теги", goods: "Товары", allGoods: "Все товары",
     add: "Добавить", buy: "Купить", details: "Подробнее", loading: "Загружаем товары AliExpress...", noGoods: "Реальные товары не найдены.",
     lang: "Язык", light: "Светлая тема", dark: "Тёмная тема", loadingCatalog: "Загружаем каталог", apiError: "Ошибка каталога",
@@ -609,7 +621,8 @@ const translations = {
     search: "Search products and brands", profileOpen: "Profile opened", cartOpen: "Cart opened", start: "Start shopping",
     heroTitle: "Global products", heroAccent: "at a fair price", heroText: "We select products from trusted sellers and deliver them to Uzbekistan.",
     safe: "Secure payment", deliveryUz: "Delivery to Uzbekistan", categoriesQuick: "Quick pick", allCategories: "All categories",
-    best: "Best offers", popular: "Popular products", seeAll: "View all", payments: "Payments", shipping: "Delivery",
+    best: "Best offers", popular: "Popular products", forYou: "A random selection for you",
+    searchResults: (query: string) => `Products for “${query}”`, seeAll: "View all", payments: "Payments", shipping: "Delivery",
     catalogPdd: "AliExpress category", all: "All categories", tags: "All tags", goods: "Products", allGoods: "All products",
     add: "Add", buy: "Buy", details: "Details", loading: "Loading AliExpress products...", noGoods: "No real products found.",
     lang: "Language", light: "Light theme", dark: "Dark theme", loadingCatalog: "Loading catalog", apiError: "Catalog error",
@@ -632,7 +645,8 @@ const translations = {
     search: "Mahsulot va brendlarni qidiring", profileOpen: "Profil ochildi", cartOpen: "Savat ochildi", start: "Xaridni boshlash",
     heroTitle: "Dunyo mahsulotlari", heroAccent: "halol narxda", heroText: "Ishonchli sotuvchilardan mahsulotlarni tanlaymiz va O‘zbekistonga yetkazamiz.",
     safe: "Xavfsiz to‘lov", deliveryUz: "O‘zbekistonga yetkazib berish", categoriesQuick: "Tezkor tanlov", allCategories: "Barcha kategoriyalar",
-    best: "Eng yaxshi takliflar", popular: "Mashhur mahsulotlar", seeAll: "Barchasini ko‘rish", payments: "To‘lovlar", shipping: "Yetkazib berish",
+    best: "Eng yaxshi takliflar", popular: "Mashhur mahsulotlar", forYou: "Siz uchun tasodifiy tanlov",
+    searchResults: (query: string) => `“${query}” so‘rovi bo‘yicha mahsulotlar`, seeAll: "Barchasini ko‘rish", payments: "To‘lovlar", shipping: "Yetkazib berish",
     catalogPdd: "AliExpress kategoriyasi", all: "Barcha kategoriyalar", tags: "Barcha teglar", goods: "Mahsulotlar", allGoods: "Barcha mahsulotlar",
     add: "Qo‘shish", buy: "Sotib olish", details: "Batafsil", loading: "AliExpress mahsulotlari yuklanmoqda...", noGoods: "Haqiqiy mahsulotlar topilmadi.",
     lang: "Til", light: "Yorug‘ rejim", dark: "Qorong‘i rejim", loadingCatalog: "Katalog yuklanmoqda", apiError: "Katalog xatosi",
@@ -847,6 +861,7 @@ export function App() {
     : product.descriptionRu || product.descriptionUz;
   const [view, setView] = useState<View>("Главная");
   const [search, setSearch] = useState("");
+  const [recommendationKeyword] = useState(() => HOME_RECOMMENDATION_KEYWORDS[Math.floor(Math.random() * HOME_RECOMMENDATION_KEYWORDS.length)]);
   const [selectedCat, setSelectedCat] = useState<string>("all");
   const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [categoryParentId, setCategoryParentId] = useState<string | null>(null);
@@ -1042,11 +1057,13 @@ export function App() {
     setCatalogError("");
     setCatalogSource("loading");
     const timer = window.setTimeout(() => {
-      const useDropshippingSearch = selectedCat !== "all" || Boolean(search.trim());
+      const searchTerm = search.trim();
+      const isHomeRecommendations = view === "Главная" && selectedCat === "all" && !searchTerm;
+      const useDropshippingSearch = selectedCat !== "all" || Boolean(searchTerm) || isHomeRecommendations;
       const selectedCategory = categories.find((category) => category.id === selectedCat);
       const categoryKeyword = selectedCat !== "all" ? categoryLabel(selectedCategory)?.trim() : "";
       const filters = {
-        ...(search.trim() ? { keywords: search.trim() } : {}),
+        ...(searchTerm ? { keywords: searchTerm } : {}),
         ...(selectedCat !== "all" ? { category_ids: selectedCat } : {}),
         page_no: 1,
         page_size: 20,
@@ -1087,22 +1104,23 @@ export function App() {
       };
       const load = useDropshippingSearch
         ? api.aliexpress.dropshippingProducts({
-            ...((search.trim() || categoryKeyword) ? { keyWord: search.trim() || categoryKeyword } : {}),
+            keyWord: searchTerm || categoryKeyword || recommendationKeyword,
             ...(selectedCat !== "all" ? { categoryId: selectedCat } : {}),
             pageIndex: 1,
             pageSize: 20,
-            sortBy: "orders,desc",
+            ...(selectedCat !== "all" ? { sortBy: "orders,desc" } : {}),
             currency: "UZS",
           })
         : api.aliexpress.hotProducts(filters);
       load.then((payload) => {
         if (!active) return;
-        const liveProducts = mapMarketplaceGoods(payload, useDropshippingSearch ? "UZS" : "CNY").map((product) => ({
+        const mappedProducts = mapMarketplaceGoods(payload, useDropshippingSearch ? "UZS" : "CNY").map((product) => ({
           ...product,
           category: categories.find((category) => category.id === product.categoryId)
             ?? categories.find((category) => category.id === selectedCat)
             ?? null,
         }));
+        const liveProducts = isHomeRecommendations ? shuffleItems(mappedProducts) : mappedProducts;
         if (!liveProducts.length) {
           if (useDropshippingSearch) {
             setProducts([]);
@@ -1136,16 +1154,28 @@ export function App() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [search, selectedCat, categories, language, catalogAttempt]);
+  }, [search, selectedCat, categories, language, catalogAttempt, recommendationKeyword, view]);
 
   const visibleProducts = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return products.filter((product) => {
+    const filtered = products.filter((product) => {
       const title = `${product.titleUz ?? ""} ${product.titleRu ?? ""}`.toLowerCase();
       const categoryName = `${product.category?.nameUz ?? ""} ${product.category?.nameRu ?? ""}`.toLowerCase();
       const matchesQuery = !term || liveCatalog || title.includes(term) || categoryName.includes(term);
       return matchesQuery;
     });
+    if (!term) return filtered;
+
+    const terms = term.split(/\s+/).filter(Boolean);
+    return filtered
+      .map((product, index) => {
+        const title = `${product.titleUz ?? ""} ${product.titleRu ?? ""}`.toLowerCase();
+        const exactMatch = title.includes(term);
+        const matchedTerms = terms.filter((part) => title.includes(part)).length;
+        return { product, index, score: (exactMatch ? 1000 : 0) + matchedTerms };
+      })
+      .sort((first, second) => second.score - first.score || first.index - second.index)
+      .map(({ product }) => product);
   }, [products, search, liveCatalog]);
 
   const categoryChildren = useMemo(() => {
@@ -1478,7 +1508,7 @@ export function App() {
         <div className="section-head">
           <div>
             <small>{text.best}</small>
-            <h2>{text.popular}</h2>
+            <h2>{search.trim() ? text.searchResults(search.trim()) : text.forYou}</h2>
           </div>
           <button type="button" onClick={() => goTo("Категории", text.catalog)}>{text.seeAll} <ChevronRight size={16} /></button>
         </div>
