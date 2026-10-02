@@ -1,9 +1,27 @@
-import { Controller, Get, Param, Query } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Headers, Param, Post, Query } from "@nestjs/common";
 import { AliexpressService } from "./aliexpress.service";
 
 @Controller("integrations/aliexpress")
 export class AliexpressController {
   constructor(private readonly aliexpress: AliexpressService) {}
+
+  @Post("oauth/start")
+  async startOAuth(@Headers("x-aliexpress-setup-secret") setupSecret?: string) {
+    this.aliexpress.validateSetupSecret(setupSecret);
+    return { authorizationUrl: await this.aliexpress.createAuthorizationUrl() };
+  }
+
+  @Get("oauth/callback")
+  async oauthCallback(
+    @Query("code") code?: string,
+    @Query("state") state?: string,
+    @Query("error") error?: string
+  ) {
+    if (error) throw new BadRequestException("AliExpress authorization was declined");
+    if (!code || !state) throw new BadRequestException("AliExpress callback is missing code or state");
+    await this.aliexpress.completeAuthorization(code, state);
+    return { success: true, message: "AliExpress is connected. Tokens were saved securely on the backend." };
+  }
 
   @Get("product/:productId")
   productDetails(

@@ -27,3 +27,9 @@ services:
         sync: false
       - key: ALIEXPRESS_ACCESS_TOKEN
         sync: false
+      - key: ALIEXPRESS_REDIRECT_URI
+        value: https://uriona-api.onrender.com/api/v1/integrations/aliexpress/oauth/callback
+      - key: ALIEXPRESS_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: ALIEXPRESS_OAUTH_SETUP_SECRET
+        sync: false

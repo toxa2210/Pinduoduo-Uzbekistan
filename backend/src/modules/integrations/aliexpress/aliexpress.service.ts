@@ -1,14 +1,252 @@
-import { BadRequestException, Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, Injectable, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { createHmac } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { PrismaService } from "../../../database/prisma.service";
+
+type AliExpressTokenResponse = {
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number | string;
+  expire_time?: number | string;
+  refresh_token_valid_time?: number | string;
+  refresh_expires_in?: number | string;
+};
 
 @Injectable()
 export class AliexpressService {
   private readonly gateway: string;
   private readonly timeoutMs = 15_000;
+  private refreshPromise?: Promise<string>;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(private readonly config: ConfigService, private readonly prisma: PrismaService) {
     this.gateway = this.config.get<string>("ALIEXPRESS_API_URL") ?? "https://api-sg.aliexpress.com/sync";
+  }
+
+  private requiredConfig(name: string): string {
+    const value = this.config.get<string>(name);
+    if (!value) throw new ServiceUnavailableException(`AliExpress configuration is missing ${name}`);
+    return value;
+  }
+
+  validateSetupSecret(provided?: string): void {
+    const expected = this.requiredConfig("ALIEXPRESS_OAUTH_SETUP_SECRET");
+    const providedHash = createHash("sha256").update(provided ?? "").digest();
+    const expectedHash = createHash("sha256").update(expected).digest();
+    if (!provided || !timingSafeEqual(providedHash, expectedHash)) {
+      throw new UnauthorizedException("Invalid AliExpress OAuth setup credentials");
+    }
+  }
+
+  private encryptionKey(): Buffer {
+    const encoded = this.requiredConfig("ALIEXPRESS_TOKEN_ENCRYPTION_KEY");
+    if (!/^[A-Za-z0-9+/]{43}=$/.test(encoded)) {
+      throw new ServiceUnavailableException("ALIEXPRESS_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key");
+    }
+    const key = Buffer.from(encoded, "base64");
+    if (key.length !== 32) {
+      throw new ServiceUnavailableException("ALIEXPRESS_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key");
+    }
+    return key;
+  }
+
+  private encrypt(value: string): string {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", this.encryptionKey(), iv);
+    const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+    return [iv, cipher.getAuthTag(), encrypted].map((part) => part.toString("base64")).join(".");
+  }
+
+  private decrypt(value: string): string {
+    const [ivValue, tagValue, encryptedValue] = value.split(".");
+    if (!ivValue || !tagValue || !encryptedValue) {
+      throw new ServiceUnavailableException("Stored AliExpress credentials are invalid");
+    }
+    const decipher = createDecipheriv("aes-256-gcm", this.encryptionKey(), Buffer.from(ivValue, "base64"));
+    decipher.setAuthTag(Buffer.from(tagValue, "base64"));
+    return Buffer.concat([
+      decipher.update(Buffer.from(encryptedValue, "base64")),
+      decipher.final()
+    ]).toString("utf8");
+  }
+
+  async createAuthorizationUrl(): Promise<string> {
+    const appKey = this.requiredConfig("ALIEXPRESS_APP_KEY");
+    const redirectUri = this.requiredConfig("ALIEXPRESS_REDIRECT_URI");
+    this.encryptionKey();
+
+    const state = randomBytes(32).toString("base64url");
+    const now = new Date();
+    await this.prisma.aliexpressOAuthState.deleteMany({ where: { expiresAt: { lt: now } } });
+    await this.prisma.aliexpressOAuthState.create({
+      data: {
+        stateHash: createHash("sha256").update(state).digest("hex"),
+        expiresAt: new Date(now.getTime() + 10 * 60 * 1000)
+      }
+    });
+
+    const authorizeUrl = new URL("https://api-sg.aliexpress.com/oauth/authorize");
+    authorizeUrl.search = new URLSearchParams({
+      response_type: "code",
+      force_auth: "true",
+      redirect_uri: redirectUri,
+      client_id: appKey,
+      state
+    }).toString();
+    return authorizeUrl.toString();
+  }
+
+  async completeAuthorization(code: string, state: string): Promise<void> {
+    if (code.length > 4096 || state.length > 256) {
+      throw new BadRequestException("AliExpress authorization callback parameters are invalid");
+    }
+    const now = new Date();
+    const consumed = await this.prisma.aliexpressOAuthState.updateMany({
+      where: {
+        stateHash: createHash("sha256").update(state).digest("hex"),
+        expiresAt: { gt: now },
+        consumedAt: null
+      },
+      data: { consumedAt: now }
+    });
+    if (consumed.count !== 1) {
+      throw new BadRequestException("AliExpress authorization state is invalid, expired, or already used");
+    }
+
+    const tokens = await this.requestTokens("/auth/token/create", { code });
+    await this.saveTokens(tokens);
+  }
+
+  private signAuthRequest(path: string, params: Record<string, string>): string {
+    const secret = this.requiredConfig("ALIEXPRESS_APP_SECRET");
+    const payload = Object.entries(params)
+      .filter(([, value]) => value !== "")
+      .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+      .map(([key, value]) => `${key}${value}`)
+      .join("");
+    return createHmac("sha256", secret).update(path + payload).digest("hex").toUpperCase();
+  }
+
+  private async requestTokens(path: "/auth/token/create" | "/auth/token/refresh", params: Record<string, string>) {
+    const body = {
+      app_key: this.requiredConfig("ALIEXPRESS_APP_KEY"),
+      timestamp: String(Date.now()),
+      sign_method: "sha256",
+      ...params
+    };
+    const url = `https://api-sg.aliexpress.com/rest${path}`;
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded;charset=utf-8" },
+        body: new URLSearchParams({ ...body, sign: this.signAuthRequest(path, body) }),
+        signal: AbortSignal.timeout(this.timeoutMs)
+      });
+    } catch {
+      throw new ServiceUnavailableException("AliExpress token endpoint could not be reached");
+    }
+
+    let data: Record<string, unknown>;
+    try {
+      data = await response.json() as Record<string, unknown>;
+    } catch {
+      throw new ServiceUnavailableException("AliExpress token endpoint returned an invalid response");
+    }
+    const result = this.findTokenResponse(data);
+    const providerError = this.findProviderError(data);
+    if (!response.ok || providerError) {
+      const code = providerError?.code ?? providerError?.error_code;
+      const message = providerError?.msg ?? providerError?.message ?? providerError?.error_message;
+      throw new ServiceUnavailableException({
+        provider: "aliexpress",
+        code: code ? String(code) : undefined,
+        message: message ? String(message) : "AliExpress token exchange failed"
+      });
+    }
+    if (!result?.access_token) {
+      throw new ServiceUnavailableException("AliExpress token response did not contain an access token");
+    }
+    return result;
+  }
+
+  private findTokenResponse(value: unknown, depth = 0): AliExpressTokenResponse | undefined {
+    if (!value || typeof value !== "object" || depth > 3) return undefined;
+    const record = value as Record<string, unknown>;
+    if (typeof record.access_token === "string") return record as AliExpressTokenResponse;
+    for (const nested of Object.values(record)) {
+      const result = this.findTokenResponse(nested, depth + 1);
+      if (result) return result;
+    }
+    return undefined;
+  }
+
+  private findProviderError(value: unknown, depth = 0): Record<string, unknown> | undefined {
+    if (!value || typeof value !== "object" || depth > 3) return undefined;
+    const record = value as Record<string, unknown>;
+    const error = record.error_response ?? record.error;
+    if (error && typeof error === "object") return error as Record<string, unknown>;
+    if (record.error_code) return record;
+    for (const nested of Object.values(record)) {
+      const result = this.findProviderError(nested, depth + 1);
+      if (result) return result;
+    }
+    return undefined;
+  }
+
+  private expiryDate(tokens: AliExpressTokenResponse, key: "expires_in" | "refresh_expires_in", absoluteKey?: "expire_time" | "refresh_token_valid_time"): Date | null {
+    const absolute = absoluteKey ? Number(tokens[absoluteKey]) : NaN;
+    if (Number.isFinite(absolute) && absolute > Date.now()) return new Date(absolute);
+    const seconds = Number(tokens[key]);
+    if (Number.isFinite(seconds) && seconds > 0) return new Date(Date.now() + seconds * 1000);
+    return null;
+  }
+
+  private async saveTokens(tokens: AliExpressTokenResponse, retainedRefreshToken?: string): Promise<void> {
+    const accessTokenExpiresAt = this.expiryDate(tokens, "expires_in", "expire_time");
+    const refreshToken = tokens.refresh_token ?? retainedRefreshToken;
+    if (!accessTokenExpiresAt || !tokens.access_token || !refreshToken) {
+      throw new ServiceUnavailableException("AliExpress token response is missing access token, refresh token, or expiry");
+    }
+    const refreshTokenExpiresAt = this.expiryDate(tokens, "refresh_expires_in", "refresh_token_valid_time");
+    const data = {
+      accessTokenCiphertext: this.encrypt(tokens.access_token),
+      refreshTokenCiphertext: this.encrypt(refreshToken),
+      accessTokenExpiresAt,
+      refreshTokenExpiresAt
+    };
+    await this.prisma.aliexpressCredential.upsert({
+      where: { id: "primary" },
+      create: { id: "primary", ...data },
+      update: data
+    });
+  }
+
+  private async getAccessToken(): Promise<string | undefined> {
+    const stored = await this.prisma.aliexpressCredential.findUnique({ where: { id: "primary" } });
+    if (!stored) return this.config.get<string>("ALIEXPRESS_ACCESS_TOKEN");
+    if (stored.accessTokenExpiresAt.getTime() > Date.now() + 60_000) {
+      return this.decrypt(stored.accessTokenCiphertext);
+    }
+    if (!this.refreshPromise) {
+      this.refreshPromise = this.refreshAccessToken().finally(() => {
+        this.refreshPromise = undefined;
+      });
+    }
+    return this.refreshPromise;
+  }
+
+  private async refreshAccessToken(): Promise<string> {
+    const stored = await this.prisma.aliexpressCredential.findUnique({ where: { id: "primary" } });
+    if (!stored) throw new ServiceUnavailableException("AliExpress authorization is not configured");
+    if (stored.refreshTokenExpiresAt && stored.refreshTokenExpiresAt.getTime() <= Date.now()) {
+      throw new ServiceUnavailableException("AliExpress refresh token expired; authorize the app again");
+    }
+    const previousRefreshToken = this.decrypt(stored.refreshTokenCiphertext);
+    const tokens = await this.requestTokens("/auth/token/refresh", { refresh_token: previousRefreshToken });
+    await this.saveTokens(tokens, previousRefreshToken);
+    const updated = await this.prisma.aliexpressCredential.findUnique({ where: { id: "primary" } });
+    if (!updated) throw new ServiceUnavailableException("AliExpress token storage is unavailable");
+    return this.decrypt(updated.accessTokenCiphertext);
   }
 
   private sign(params: Record<string, string>): string {
@@ -25,9 +263,13 @@ export class AliexpressService {
     return createHmac("sha256", secret).update(path + payload).digest("hex").toUpperCase();
   }
 
-  async call(method: string, params: Record<string, unknown> = {}) {
+  async call(method: string, params: Record<string, unknown> = {}, requireAccessToken = false) {
     const appKey = this.config.get<string>("ALIEXPRESS_APP_KEY");
     if (!appKey) throw new ServiceUnavailableException("AliExpress credentials are not configured");
+    const token = await this.getAccessToken();
+    if (requireAccessToken && !token) {
+      throw new ServiceUnavailableException("AliExpress DS API requires OAuth authorization and a valid access token");
+    }
 
     const reserved = new Set(["app_key", "method", "timestamp", "sign_method", "format", "v", "access_token", "sign"]);
     const body: Record<string, string> = {
@@ -43,7 +285,6 @@ export class AliexpressService {
         return result;
       }, {})
     };
-    const token = this.config.get<string>("ALIEXPRESS_ACCESS_TOKEN");
     if (token) body.access_token = token;
     body.sign = this.sign(body);
 
@@ -102,17 +343,13 @@ export class AliexpressService {
     if (params.target_language && !/^[a-z]{2}(?:_[A-Z]{2})?$/.test(params.target_language)) {
       throw new BadRequestException("target_language must be a supported language code");
     }
-    if (!this.config.get<string>("ALIEXPRESS_ACCESS_TOKEN")) {
-      throw new ServiceUnavailableException("AliExpress DS API requires ALIEXPRESS_ACCESS_TOKEN");
-    }
-
     return this.call("aliexpress.ds.product.get", {
       product_id: productId,
       ship_to_country: params.ship_to_country ?? "UZ",
       target_currency: params.target_currency ?? "USD",
       target_language: params.target_language ?? "ru_RU",
       remove_personal_benefit: "true"
-    });
+    }, true);
   }
 
   hotProducts(params: Record<string, unknown> = {}) {

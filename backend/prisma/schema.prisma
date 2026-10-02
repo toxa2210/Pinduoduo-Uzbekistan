@@ -177,3 +177,21 @@ model Payment {
   @@index([orderId])
   @@unique([provider, externalRef])
 }
+
+model AliexpressOAuthState {
+  stateHash  String    @id
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
+model AliexpressCredential {
+  id                    String    @id @default("primary")
+  accessTokenCiphertext String
+  refreshTokenCiphertext String
+  accessTokenExpiresAt  DateTime
+  refreshTokenExpiresAt DateTime?
+  updatedAt             DateTime  @updatedAt
+}
