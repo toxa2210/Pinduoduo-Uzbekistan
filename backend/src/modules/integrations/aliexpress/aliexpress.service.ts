@@ -1,4 +1,4 @@
-import { Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createHmac } from "node:crypto";
 
@@ -65,10 +65,19 @@ export class AliexpressService {
     } catch {
       throw new ServiceUnavailableException("AliExpress API returned an invalid response");
     }
-    if (!response.ok || data.error_response || data.error_code) {
+    const methodResponse = Object.entries(data).find(([key, value]) =>
+      key !== "error_response" && key.endsWith("_response") && value && typeof value === "object"
+    )?.[1] as Record<string, unknown> | undefined;
+    const nestedError = methodResponse?.error_response;
+    const hasError = Boolean(data.error_response || data.error_code || nestedError || methodResponse?.error_code);
+    if (!response.ok || hasError) {
       const error = data.error_response && typeof data.error_response === "object"
         ? data.error_response as Record<string, unknown>
-        : data;
+        : nestedError && typeof nestedError === "object"
+          ? nestedError as Record<string, unknown>
+          : methodResponse?.error_code
+            ? methodResponse
+            : data;
       const code = error.code ?? error.error_code;
       const message = error.msg ?? error.message ?? error.error_message;
       throw new ServiceUnavailableException({
@@ -78,6 +87,32 @@ export class AliexpressService {
       });
     }
     return data;
+  }
+
+  productDetails(productId: string, params: Record<string, string> = {}) {
+    if (!/^\d+$/.test(productId)) {
+      throw new BadRequestException("productId must be a numeric AliExpress item ID");
+    }
+    if (params.ship_to_country && !/^[A-Z]{2}$/.test(params.ship_to_country)) {
+      throw new BadRequestException("ship_to_country must be a two-letter uppercase country code");
+    }
+    if (params.target_currency && !/^[A-Z]{3}$/.test(params.target_currency)) {
+      throw new BadRequestException("target_currency must be a three-letter uppercase currency code");
+    }
+    if (params.target_language && !/^[a-z]{2}(?:_[A-Z]{2})?$/.test(params.target_language)) {
+      throw new BadRequestException("target_language must be a supported language code");
+    }
+    if (!this.config.get<string>("ALIEXPRESS_ACCESS_TOKEN")) {
+      throw new ServiceUnavailableException("AliExpress DS API requires ALIEXPRESS_ACCESS_TOKEN");
+    }
+
+    return this.call("aliexpress.ds.product.get", {
+      product_id: productId,
+      ship_to_country: params.ship_to_country ?? "UZ",
+      target_currency: params.target_currency ?? "USD",
+      target_language: params.target_language ?? "ru_RU",
+      remove_personal_benefit: "true"
+    });
   }
 
   hotProducts(params: Record<string, unknown> = {}) {

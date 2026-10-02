@@ -191,6 +191,8 @@ export const api = {
       request<unknown>(queryPath("/integrations/aliexpress/affiliate/products", params)),
     categories: (params: Record<string, unknown> = {}) =>
       request<unknown>(queryPath("/integrations/aliexpress/affiliate/categories", params)),
+    productDetails: (productId: string, params: Record<string, unknown> = {}) =>
+      request<unknown>(queryPath(`/integrations/aliexpress/product/${encodeURIComponent(productId)}`, params)),
     affiliateLinks: (params: Record<string, unknown> = {}) =>
       request<unknown>(queryPath("/integrations/aliexpress/affiliate/links", params)),
   },

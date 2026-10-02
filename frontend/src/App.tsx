@@ -177,6 +177,74 @@ function readStoredLiked(): string[] {
   return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === "string") : [];
 }
 
+type AliExpressProductDetails = {
+  subject: string;
+  description: string;
+  status: string;
+  categoryId: string;
+  images: string[];
+  videos: string[];
+  storeName: string;
+  skus: Record<string, unknown>[];
+  grossWeight: string;
+  dimensions: string;
+  deliveryTime: string;
+};
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function readString(record: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" || typeof value === "number") {
+      if (String(value).trim()) return String(value);
+    }
+  }
+  return "";
+}
+
+function readRecords(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) return value.map(readRecord).filter((item) => Object.keys(item).length > 0);
+  const record = readRecord(value);
+  if (Object.keys(record).length === 0) return [];
+  const nestedList = Object.values(record).find(Array.isArray);
+  return Array.isArray(nestedList) ? nestedList.map(readRecord).filter((item) => Object.keys(item).length > 0) : [record];
+}
+
+function parseAliExpressProductDetails(payload: unknown): AliExpressProductDetails {
+  const root = readRecord(payload);
+  const response = readRecord(root.aliexpress_ds_product_get_response ?? root);
+  const result = readRecord(response.result ?? response);
+  const base = readRecord(result.ae_item_base_info_dto);
+  const multimedia = readRecord(result.ae_multimedia_info_dto);
+  const store = readRecord(result.ae_store_info);
+  const packageInfo = readRecord(result.package_info_dto);
+  const logistics = readRecord(result.logistics_info_dto);
+  const rawImages = readString(multimedia, "image_urls").split(";").map((image) => image.trim()).filter(Boolean);
+  const videos = readRecords(multimedia.ae_video_dtos)
+    .map((video) => readString(video, "media_url", "video_url", "url"))
+    .filter(Boolean);
+  const skus = readRecords(result.ae_item_sku_info_dtos);
+
+  return {
+    subject: readString(base, "subject"),
+    description: readString(base, "detail", "mobile_detail").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
+    status: readString(base, "product_status_type"),
+    categoryId: readString(base, "category_id"),
+    images: rawImages,
+    videos,
+    storeName: readString(store, "store_name", "shop_name", "ae_store_name", "store_id"),
+    skus,
+    grossWeight: readString(packageInfo, "gross_weight"),
+    dimensions: ["package_length", "package_width", "package_height"].map((key) => readString(packageInfo, key)).every(Boolean)
+      ? `${readString(packageInfo, "package_length")} × ${readString(packageInfo, "package_width")} × ${readString(packageInfo, "package_height")}`
+      : "",
+    deliveryTime: readString(logistics, "delivery_time"),
+  };
+}
+
 export function App() {
   const [language, setLanguage] = useState<Language>(() => (localStorage.getItem("uriona-language") as Language) || "ru");
   const [lightMode, setLightMode] = useState(() => localStorage.getItem("uriona-theme") === "light");
@@ -191,6 +259,10 @@ export function App() {
   const [catalogError, setCatalogError] = useState("");
   const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [detailProduct, setDetailProduct] = useState<ApiProduct | null>(null);
+  const [detailPayload, setDetailPayload] = useState<unknown>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const [detailAttempt, setDetailAttempt] = useState(0);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesError, setCategoriesError] = useState("");
   const [liked, setLiked] = useState<string[]>(readStoredLiked);
@@ -214,6 +286,10 @@ export function App() {
   const [ordersError, setOrdersError] = useState("");
   const [ordersAttempt, setOrdersAttempt] = useState(0);
   const [orderFilter, setOrderFilter] = useState<"all" | "active" | "archive">("all");
+  const productDetails = useMemo(
+    () => detailPayload === null ? null : parseAliExpressProductDetails(detailPayload),
+    [detailPayload],
+  );
 
   useEffect(() => {
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
@@ -299,6 +375,35 @@ export function App() {
       });
     return () => { active = false; };
   }, [language, catalogAttempt]);
+
+  useEffect(() => {
+    if (!detailProduct) {
+      setDetailPayload(null);
+      setDetailError("");
+      setDetailLoading(false);
+      return;
+    }
+
+    let active = true;
+    setDetailPayload(null);
+    setDetailError("");
+    setDetailLoading(true);
+    api.aliexpress.productDetails(detailProduct.id, {
+      ship_to_country: "UZ",
+      target_currency: "USD",
+      target_language: "ru_RU",
+    })
+      .then((payload) => {
+        if (active) setDetailPayload(payload);
+      })
+      .catch((error: unknown) => {
+        if (active) setDetailError(error instanceof Error ? error.message : "Не удалось загрузить данные товара");
+      })
+      .finally(() => {
+        if (active) setDetailLoading(false);
+      });
+    return () => { active = false; };
+  }, [detailProduct, detailAttempt]);
 
   useEffect(() => {
     let active = true;
@@ -1198,12 +1303,44 @@ export function App() {
         <div className="product-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailProduct(null); }}>
           <section className="product-dialog" role="dialog" aria-modal="true" aria-labelledby="product-dialog-title">
             <button type="button" className="product-dialog-close" onClick={() => setDetailProduct(null)} aria-label="Закрыть"><X size={20} /></button>
-            {detailProduct.imageUrl && <img className="product-dialog-image" src={detailProduct.imageUrl} alt={detailProduct.titleRu || detailProduct.titleUz} />}
+            {(productDetails?.images[0] || detailProduct.imageUrl) && <img className="product-dialog-image" src={productDetails?.images[0] || detailProduct.imageUrl || undefined} alt={productDetails?.subject || detailProduct.titleRu || detailProduct.titleUz} />}
             <small>{detailProduct.category?.nameRu || "Товар AliExpress"}</small>
-            <h2 id="product-dialog-title">{detailProduct.titleRu || detailProduct.titleUz}</h2>
-            <p>{detailProduct.descriptionRu || detailProduct.descriptionUz || "Описание не предоставлено API."}</p>
+            <h2 id="product-dialog-title">{productDetails?.subject || detailProduct.titleRu || detailProduct.titleUz}</h2>
+            <p>{productDetails?.description || detailProduct.descriptionRu || detailProduct.descriptionUz || (detailLoading ? "Загружаем описание товара…" : "Описание не предоставлено API.")}</p>
             <strong>{formatUzs(detailProduct.priceMinor)}</strong>
-            <code>goods_sign: {detailProduct.id}</code>
+            <code>product_id: {detailProduct.id}</code>
+            {detailLoading && <p className="product-detail-state" role="status">Загружаем данные AliExpress…</p>}
+            {detailError && <div className="product-detail-state" role="alert"><span>{detailError}</span><button type="button" onClick={() => setDetailAttempt((attempt) => attempt + 1)}>Повторить</button></div>}
+            {productDetails && <>
+              <dl className="product-detail-meta">
+                {productDetails.status && <div><dt>Статус</dt><dd>{productDetails.status}</dd></div>}
+                {productDetails.categoryId && <div><dt>ID категории</dt><dd>{productDetails.categoryId}</dd></div>}
+                {productDetails.storeName && <div><dt>Магазин</dt><dd>{productDetails.storeName}</dd></div>}
+                {productDetails.grossWeight && <div><dt>Вес брутто</dt><dd>{productDetails.grossWeight}</dd></div>}
+                {productDetails.dimensions && <div><dt>Размер упаковки</dt><dd>{productDetails.dimensions}</dd></div>}
+                {productDetails.deliveryTime && <div><dt>Срок отправки</dt><dd>{productDetails.deliveryTime}</dd></div>}
+              </dl>
+              {productDetails.images.length > 1 && <div className="product-detail-images" aria-label="Фотографии товара">
+                {productDetails.images.slice(1, 7).map((image) => <img key={image} src={image} alt="" loading="lazy" />)}
+              </div>}
+              {productDetails.videos.length > 0 && <div className="product-detail-videos">
+                {productDetails.videos.map((video) => <video key={video} src={video} controls preload="none" aria-label="Видео товара" />)}
+              </div>}
+              {productDetails.skus.length > 0 && <div className="product-detail-skus">
+                <h3>Варианты товара</h3>
+                {productDetails.skus.slice(0, 24).map((sku, index) => {
+                  const properties = readRecords(sku.ae_sku_property_dtos)
+                    .map((property) => `${readString(property, "property_name", "sku_property_name", "prop_name")}: ${readString(property, "property_value", "sku_property_value", "prop_value")}`)
+                    .filter((value) => value !== ": ");
+                  const price = readString(sku, "offer_sale_price", "sku_price");
+                  const stock = readString(sku, "sku_available_stock");
+                  return <div className="product-detail-sku" key={readString(sku, "sku_id") || index}>
+                    <span>{properties.join(" · ") || `Вариант ${index + 1}`}</span>
+                    <b>{price ? `${price} USD` : "Цена не указана"}{stock ? ` · Остаток: ${stock}` : ""}</b>
+                  </div>;
+                })}
+              </div>}
+            </>}
           </section>
         </div>
       )}
