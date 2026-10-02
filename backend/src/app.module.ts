@@ -13,7 +13,7 @@ import { RequestIdMiddleware } from "./common/request-id.middleware";
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: [".env.local", ".env"] }),
     PrismaModule,
     AuthModule,
     CatalogModule,

@@ -2,6 +2,13 @@ const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1";
 const CNY_TO_UZS = Number(import.meta.env.VITE_CNY_TO_UZS ?? 1800);
 
 type JsonObject = Record<string, unknown>;
+export class ApiRequestError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 export type ApiCategory = { id: string; nameUz: string; nameRu: string };
 export type ApiProduct = {
   id: string;
@@ -19,20 +26,49 @@ export type ApiProduct = {
 export type ApiOption = { id: string; name: string; parentId: string | null };
 export type ProductList = { items: ApiProduct[]; page: number; limit: number; total: number; pages: number };
 export type ApiUser = { id: string; phone?: string | null; name?: string | null; email?: string | null; city?: string | null; address?: string | null; language?: string | null; role?: string };
+export type ApiOrder = {
+  id: string;
+  status: string;
+  totalMinor: number;
+  currency: string;
+  deliveryAddress: string;
+  createdAt: string;
+  items: Array<{
+    id: string;
+    productId: string;
+    quantity: number;
+    unitPriceMinor: number;
+    product?: Pick<ApiProduct, "id" | "titleRu" | "titleUz" | "imageUrl">;
+  }>;
+};
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("Accept", "application/json");
+  if (init?.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   const res = await fetch(API_BASE + path, {
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     ...init,
+    headers,
   });
   if (!res.ok) {
     const body = await res.text();
     let message = body || `API error ${res.status}`;
     try {
       const error = asObject(JSON.parse(body));
-      message = firstString(error.message, asObject(error.response).error_msg) || message;
+      const details = asObject(error.message);
+      const detailMessage = firstString(details.message);
+      const detailCode = firstString(details.code, error.code);
+      message = firstString(
+        typeof error.message === "string"
+          ? `${detailCode ? `${detailCode}: ` : ""}${error.message}`
+          : undefined,
+        detailMessage ? `${detailCode ? `${detailCode}: ` : ""}${detailMessage}` : "",
+        asObject(error.response).error_msg,
+      ) || message;
     } catch {}
-    throw new Error(message);
+    throw new ApiRequestError(message, res.status);
   }
   return res.json();
 }
@@ -135,8 +171,7 @@ function queryPath(path: string, params: Record<string, unknown>): string {
 
 export const api = {
   auth: {
-    register: (email: string, password: string) => request<{ accessToken: string; user: ApiUser }>("/auth/register", { method: "POST", body: JSON.stringify({ email, password }) }),
-    login: (email: string, password: string) => request<{ accessToken: string; user: ApiUser }>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+    firebase: (idToken: string) => request<{ accessToken: string; user: ApiUser }>("/auth/firebase", { method: "POST", body: JSON.stringify({ idToken }) }),
     profile: (token: string) => request<ApiUser>("/auth/profile", { headers: { Authorization: `Bearer ${token}` } }),
     updateProfile: (token: string, profile: Partial<ApiUser>) => request<ApiUser>("/auth/profile", { method: "PATCH", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(profile) }),
   },
@@ -147,6 +182,9 @@ export const api = {
     return request<ProductList>(`/products?${query}`);
   },
   product: (id: string) => request<ApiProduct>(`/products/${id}`),
+  orders: {
+    list: (token: string) => request<ApiOrder[]>("/orders", { headers: { Authorization: `Bearer ${token}` } }),
+  },
   aliexpress: {
     hotProducts: (params: Record<string, unknown> = {}) =>
       request<unknown>(queryPath("/integrations/aliexpress/affiliate/products", params)),

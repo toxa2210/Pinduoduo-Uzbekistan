@@ -4,6 +4,7 @@ services:
     runtime: node
     rootDir: backend
     buildCommand: npm ci && npm run prisma:generate && npm run build
+    preDeployCommand: npm run prisma:migrate:deploy
     startCommand: npm run start
     healthCheckPath: /api/v1/health
     envVars:
@@ -14,6 +15,8 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: FRONTEND_URL
+        sync: false
+      - key: FIREBASE_PROJECT_ID
         sync: false
       - key: JWT_SECRET
         generateValue: true

@@ -1,16 +1,14 @@
 import { Body, Controller, Get, Headers, Patch, Post, UnauthorizedException } from "@nestjs/common";
-import { IsEmail, IsOptional, IsString, MinLength } from "class-validator";
+import { IsNotEmpty, IsOptional, IsString } from "class-validator";
 import { AuthService } from "./auth.service";
 
-class CredentialsDto {
-  @IsEmail() email!: string;
-  @IsString() @MinLength(8) password!: string;
+class FirebaseTokenDto {
+  @IsString() @IsNotEmpty() idToken!: string;
 }
 
 class ProfileDto {
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsString() name?: string;
-  @IsOptional() @IsEmail() email?: string;
   @IsOptional() @IsString() city?: string;
   @IsOptional() @IsString() address?: string;
   @IsOptional() @IsString() language?: string;
@@ -20,11 +18,8 @@ class ProfileDto {
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
-  @Post("register")
-  register(@Body() body: CredentialsDto) { return this.auth.register(body.email, body.password); }
-
-  @Post("login")
-  login(@Body() body: CredentialsDto) { return this.auth.login(body.email, body.password); }
+  @Post("firebase")
+  firebase(@Body() body: FirebaseTokenDto) { return this.auth.authenticateFirebase(body.idToken); }
 
   @Get("profile")
   profile(@Headers("authorization") authorization?: string) {

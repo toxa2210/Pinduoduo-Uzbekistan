@@ -24,7 +24,10 @@ import {
   Moon,
   Sun,
 } from "lucide-react";
-import { api, formatUzs, mapMarketplaceCategories, mapMarketplaceGoods, type ApiCategory, type ApiProduct, type ApiUser } from "./api";
+import { createUserWithEmailAndPassword, getIdToken, reload, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from "@firebase/auth";
+import type { User as FirebaseUser } from "@firebase/auth";
+import { ApiRequestError, api, formatUzs, mapMarketplaceCategories, mapMarketplaceGoods, type ApiCategory, type ApiOrder, type ApiProduct, type ApiUser } from "./api";
+import { firebaseAuth, firebaseConfigReady } from "./firebase";
 
 const navItems = ["Главная", "Категории", "Корзина", "Профиль"] as const;
 type Language = "ru" | "en" | "uz";
@@ -41,6 +44,7 @@ const translations = {
     lang: "Язык", light: "Светлая тема", dark: "Тёмная тема", loadingCatalog: "Загружаем каталог", apiError: "Ошибка каталога",
     china: "Международный каталог", hot: "Горячие товары", showAll: "Показать всё", sale: "Акции недели", discount: "Скидка",
     emptyCart: "Корзина пуста", addFromCatalog: "Добавьте товары из каталога и вернитесь сюда.", shop: "К покупкам",
+    retry: "Повторить",
   },
   en: {
     home: "Home", categories: "Categories", cart: "Cart", profile: "Profile", catalog: "Catalog",
@@ -54,6 +58,7 @@ const translations = {
     lang: "Language", light: "Light theme", dark: "Dark theme", loadingCatalog: "Loading catalog", apiError: "Catalog error",
     china: "Global catalog", hot: "Trending products", showAll: "Show all", sale: "Weekly deals", discount: "Sale",
     emptyCart: "Your cart is empty", addFromCatalog: "Add products from the catalog and come back here.", shop: "Start shopping",
+    retry: "Retry",
   },
   uz: {
     home: "Bosh sahifa", categories: "Kategoriyalar", cart: "Savat", profile: "Profil", catalog: "Katalog",
@@ -67,6 +72,7 @@ const translations = {
     lang: "Til", light: "Yorug‘ rejim", dark: "Qorong‘i rejim", loadingCatalog: "Katalog yuklanmoqda", apiError: "Katalog xatosi",
     china: "Xalqaro katalog", hot: "Ommabop mahsulotlar", showAll: "Barchasini ko‘rsatish", sale: "Haftalik chegirmalar", discount: "Chegirma",
     emptyCart: "Savat bo‘sh", addFromCatalog: "Katalogdan mahsulot qo‘shing va bu yerga qayting.", shop: "Xaridga o‘tish",
+    retry: "Qayta urinish",
   },
 } as const;
 type View =
@@ -91,6 +97,86 @@ const topMenuItems = [
   { label: "Поддержка", view: "Поддержка" as View, message: "Поддержка открыта" },
 ];
 
+const CART_STORAGE_KEY = "uriona-cart";
+const PRODUCTS_STORAGE_KEY = "uriona-cart-products";
+const LIKED_STORAGE_KEY = "uriona-liked-products";
+const MIN_PROMO_SUBTOTAL = 500_000 * 100;
+type ProfileSection = "overview" | "orders" | "wishlist" | "stores" | "reviews" | "questions" | "coupons" | "addresses" | "payments" | "settings" | "support";
+
+const orderStatusLabels: Record<string, string> = {
+  CREATED: "Создан",
+  AWAITING_PAYMENT: "Ожидает оплаты",
+  PAID: "Оплачен",
+  PROCESSING: "Собирается",
+  SHIPPED: "Отправлен",
+  DELIVERED: "Доставлен",
+  CANCELLED: "Отменён",
+};
+
+function firebaseErrorMessage(error: unknown): string {
+  const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
+    ? error.code
+    : "";
+  const messages: Record<string, string> = {
+    "auth/email-already-in-use": "Аккаунт с таким email уже существует. Войдите или восстановите пароль.",
+    "auth/invalid-email": "Проверьте правильность email.",
+    "auth/invalid-credential": "Неверный email или пароль.",
+    "auth/user-not-found": "Аккаунт не найден. Проверьте email или создайте аккаунт.",
+    "auth/wrong-password": "Неверный email или пароль.",
+    "auth/weak-password": "Пароль должен содержать не менее 8 символов.",
+    "auth/too-many-requests": "Слишком много попыток. Попробуйте позже.",
+    "auth/network-request-failed": "Нет соединения. Проверьте интернет и повторите попытку.",
+    "auth/operation-not-allowed": "В Firebase Console не включён вход по email и паролю.",
+    "auth/unauthorized-domain": "Домен сайта не добавлен в список Authorized domains Firebase.",
+    "auth/configuration-not-found": "Firebase Authentication не настроен в проекте.",
+  };
+  return messages[code] ?? (error instanceof Error ? error.message : "Не удалось выполнить запрос Firebase.");
+}
+
+function readStoredValue(key: string): unknown {
+  const stored = localStorage.getItem(key);
+  if (!stored) return null;
+  try {
+    return JSON.parse(stored) as unknown;
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    localStorage.removeItem(key);
+    return null;
+  }
+}
+
+function isApiProduct(value: unknown): value is ApiProduct {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const product = value as Record<string, unknown>;
+  return typeof product.id === "string"
+    && typeof product.titleUz === "string"
+    && typeof product.currency === "string"
+    && typeof product.priceMinor === "number"
+    && Number.isFinite(product.priceMinor)
+    && typeof product.status === "string";
+}
+
+function readStoredCart(): Record<string, number> {
+  const stored = readStoredValue(CART_STORAGE_KEY);
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) return {};
+  return Object.fromEntries(
+    Object.entries(stored).filter((entry): entry is [string, number] => {
+      const quantity = entry[1];
+      return typeof quantity === "number" && Number.isSafeInteger(quantity) && quantity > 0;
+    }),
+  );
+}
+
+function readStoredProducts(): ApiProduct[] {
+  const stored = readStoredValue(PRODUCTS_STORAGE_KEY);
+  return Array.isArray(stored) ? stored.filter(isApiProduct).slice(-100) : [];
+}
+
+function readStoredLiked(): string[] {
+  const stored = readStoredValue(LIKED_STORAGE_KEY);
+  return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === "string") : [];
+}
+
 export function App() {
   const [language, setLanguage] = useState<Language>(() => (localStorage.getItem("uriona-language") as Language) || "ru");
   const [lightMode, setLightMode] = useState(() => localStorage.getItem("uriona-theme") === "light");
@@ -100,26 +186,46 @@ export function App() {
   const [selectedCat, setSelectedCat] = useState<string>("all");
   const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [products, setProducts] = useState<ApiProduct[]>([]);
-  const [knownProducts, setKnownProducts] = useState<ApiProduct[]>([]);
   const [liveCatalog, setLiveCatalog] = useState(false);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState("");
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [detailProduct, setDetailProduct] = useState<ApiProduct | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesError, setCategoriesError] = useState("");
-  const [liked, setLiked] = useState<string[]>([]);
-  const [cartItems, setCartItems] = useState<Record<string, number>>({});
+  const [liked, setLiked] = useState<string[]>(readStoredLiked);
+  const [cartItems, setCartItems] = useState<Record<string, number>>(readStoredCart);
   const [promo, setPromo] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState("");
   const [notice, setNotice] = useState("");
   const [authToken, setAuthToken] = useState(() => localStorage.getItem("uriona-access-token") || "");
   const [profile, setProfile] = useState<ApiUser | null>(null);
+  const [knownProducts, setKnownProducts] = useState<ApiProduct[]>(readStoredProducts);
   const [profileForm, setProfileForm] = useState({ name: "", email: "", phone: "", city: "", address: "" });
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  const [profileSection, setProfileSection] = useState<"overview" | "orders" | "wishlist" | "stores" | "reviews" | "questions" | "coupons" | "addresses" | "payments" | "settings" | "support">("overview");
+  const [authMode, setAuthMode] = useState<"login" | "register" | "reset">("login");
+  const [profileSection, setProfileSection] = useState<ProfileSection>("overview");
   const [profileBusy, setProfileBusy] = useState(false);
+  const [verificationPending, setVerificationPending] = useState(false);
+  const [authNotice, setAuthNotice] = useState("");
+  const [orders, setOrders] = useState<ApiOrder[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState("");
+  const [ordersAttempt, setOrdersAttempt] = useState(0);
+  const [orderFilter, setOrderFilter] = useState<"all" | "active" | "archive">("all");
+
+  useEffect(() => {
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
+  }, [cartItems]);
+
+  useEffect(() => {
+    localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(knownProducts.slice(-100)));
+  }, [knownProducts]);
+
+  useEffect(() => {
+    localStorage.setItem(LIKED_STORAGE_KEY, JSON.stringify(liked));
+  }, [liked]);
 
   useEffect(() => {
     localStorage.setItem("uriona-language", language);
@@ -129,14 +235,41 @@ export function App() {
 
   useEffect(() => {
     if (!authToken) return;
+    let active = true;
     api.auth.profile(authToken).then((user) => {
+      if (!active) return;
       setProfile(user);
       setProfileForm({ name: user.name ?? "", email: user.email ?? "", phone: user.phone ?? "", city: user.city ?? "", address: user.address ?? "" });
-    }).catch(() => {
-      localStorage.removeItem("uriona-access-token");
-      setAuthToken("");
+    }).catch((error: unknown) => {
+      if (!active) return;
+      if (error instanceof ApiRequestError && error.status === 401) {
+        localStorage.removeItem("uriona-access-token");
+        setAuthToken("");
+        setProfile(null);
+        return;
+      }
+      setNotice(error instanceof Error ? error.message : "Не удалось загрузить профиль");
     });
+    return () => { active = false; };
   }, [authToken]);
+
+  useEffect(() => {
+    if (!authToken || !profile || profileSection !== "orders") return;
+    let active = true;
+    setOrdersLoading(true);
+    setOrdersError("");
+    api.orders.list(authToken)
+      .then((result) => {
+        if (active) setOrders(result);
+      })
+      .catch((error: unknown) => {
+        if (active) setOrdersError(error instanceof Error ? error.message : "Не удалось загрузить заказы");
+      })
+      .finally(() => {
+        if (active) setOrdersLoading(false);
+      });
+    return () => { active = false; };
+  }, [authToken, profile, profileSection, ordersAttempt]);
 
   useEffect(() => {
     if (!notice) return;
@@ -146,6 +279,8 @@ export function App() {
 
   useEffect(() => {
     let active = true;
+    setCategoriesLoading(true);
+    setCategoriesError("");
     api.aliexpress.categories()
       .then((payload) => {
         if (!active) return;
@@ -153,15 +288,17 @@ export function App() {
         setCategories(liveCategories);
         setCategoriesError(liveCategories.length ? "" : text.noGoods);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!active) return;
-        setCategoriesError(language === "en" ? "Could not load AliExpress categories." : language === "uz" ? "AliExpress kategoriyalarini yuklab bo‘lmadi." : "Не удалось загрузить категории AliExpress.");
+        setCategoriesError(error instanceof Error
+          ? error.message
+          : language === "en" ? "Could not load AliExpress categories." : language === "uz" ? "AliExpress kategoriyalarini yuklab bo‘lmadi." : "Не удалось загрузить категории AliExpress.");
       })
       .finally(() => {
         if (active) setCategoriesLoading(false);
       });
     return () => { active = false; };
-  }, [language]);
+  }, [language, catalogAttempt]);
 
   useEffect(() => {
     let active = true;
@@ -185,18 +322,20 @@ export function App() {
         setProducts(liveProducts);
         setLiveCatalog(true);
         setCatalogLoading(false);
-        setKnownProducts((current) => Array.from(new Map([...current, ...liveProducts].map((product) => [product.id, product])).values()));
-      }).catch(() => {
+        setKnownProducts((current) => Array.from(new Map([...current, ...liveProducts].map((product) => [product.id, product])).values()).slice(-100));
+      }).catch((error: unknown) => {
         if (!active) return;
         setCatalogLoading(false);
-        setCatalogError(language === "en" ? "Could not load AliExpress products." : language === "uz" ? "AliExpress mahsulotlarini yuklab bo‘lmadi." : "Не удалось загрузить товары AliExpress.");
+        setCatalogError(error instanceof Error
+          ? error.message
+          : language === "en" ? "Could not load AliExpress products." : language === "uz" ? "AliExpress mahsulotlarini yuklab bo‘lmadi." : "Не удалось загрузить товары AliExpress.");
       });
     }, search.trim() ? 400 : 0);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [search, selectedCat, categories, language]);
+  }, [search, selectedCat, categories, language, catalogAttempt]);
 
   const visibleProducts = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -219,9 +358,19 @@ export function App() {
   const cartEntryList = knownProducts.filter((product) => cartItems[product.id]);
   const cartCount = cartEntryList.reduce((sum, product) => sum + (cartItems[product.id] ?? 0), 0);
   const subtotal = cartEntryList.reduce((sum, product) => sum + product.priceMinor * (cartItems[product.id] ?? 0), 0);
-  const shipping = subtotal > 0 ? 35000 : 0;
-  const discount = promo.trim().toUpperCase() === "SAVE10" ? Math.round(subtotal * 0.1) : 0;
+  const shipping = subtotal > 0 ? 35_000 * 100 : 0;
+  const discount = appliedPromo === "SAVE10" && subtotal >= MIN_PROMO_SUBTOTAL
+    ? Math.round(subtotal * 0.1)
+    : 0;
   const total = subtotal + shipping - discount;
+
+  const retryCatalog = () => setCatalogAttempt((attempt) => attempt + 1);
+  const renderCatalogState = (message: string, canRetry: boolean) => (
+    <div className="catalog-state" role={canRetry ? "alert" : "status"}>
+      <span>{message}</span>
+      {canRetry && <button type="button" onClick={retryCatalog}>{text.retry}</button>}
+    </div>
+  );
 
   const goTo = (nextView: View, message?: string) => {
     setView(nextView);
@@ -233,16 +382,30 @@ export function App() {
     setNotice("Товар добавлен в корзину");
   };
 
-  const openProductDetails = async (product: ApiProduct) => {
+  const toggleFavorite = (productId: string) => {
+    const isSaved = liked.includes(productId);
+    setLiked((items) => isSaved ? items.filter((id) => id !== productId) : [...items, productId]);
+    setNotice(isSaved ? "Товар удалён из избранного" : "Товар добавлен в избранное");
+  };
+
+  const openProductDetails = (product: ApiProduct) => {
     setDetailProduct(product);
-    setDetailLoading(true);
-    try {
-      setDetailLoading(false);
-    } catch {
-      setNotice("Детали товара будут добавлены после подключения detail API AliExpress");
-    } finally {
-      setDetailLoading(false);
+  };
+
+  const applyPromo = () => {
+    const code = promo.trim().toUpperCase();
+    if (code !== "SAVE10") {
+      setAppliedPromo("");
+      setNotice(code ? "Промокод не найден" : "Введите промокод");
+      return;
     }
+    if (subtotal < MIN_PROMO_SUBTOTAL) {
+      setAppliedPromo("");
+      setNotice("SAVE10 действует для заказа от 500 000 сум");
+      return;
+    }
+    setAppliedPromo(code);
+    setNotice("Промокод SAVE10 применён");
   };
 
   const handleQtyChange = (productId: string, delta: number) => {
@@ -256,19 +419,122 @@ export function App() {
     });
   };
 
+  const establishFirebaseSession = async (user: FirebaseUser) => {
+    if (!user.emailVerified) {
+      await sendEmailVerification(user);
+      setVerificationPending(true);
+      setAuthNotice(`Мы отправили ссылку подтверждения на ${user.email ?? authEmail}. Подтвердите адрес и нажмите «Я подтвердил email».`);
+      return;
+    }
+    const result = await api.auth.firebase(await getIdToken(user, true));
+    localStorage.setItem("uriona-access-token", result.accessToken);
+    setAuthToken(result.accessToken);
+    setProfile(result.user);
+    setProfileForm({ name: result.user.name ?? "", email: result.user.email ?? user.email ?? "", phone: result.user.phone ?? "", city: result.user.city ?? "", address: result.user.address ?? "" });
+    setVerificationPending(false);
+    setAuthNotice("");
+    setNotice("Вход выполнен");
+  };
+
   const submitAuth = async () => {
+    if (!firebaseAuth) {
+      setAuthNotice("Firebase ещё не настроен. Добавьте параметры веб-приложения Firebase в окружение frontend.");
+      return;
+    }
     setProfileBusy(true);
+    setAuthNotice("");
     try {
-      const result = authMode === "register"
-        ? await api.auth.register(authEmail, authPassword)
-        : await api.auth.login(authEmail, authPassword);
-      localStorage.setItem("uriona-access-token", result.accessToken);
-      setAuthToken(result.accessToken);
-      setProfile(result.user);
-      setProfileForm({ name: result.user.name ?? "", email: result.user.email ?? authEmail, phone: result.user.phone ?? "", city: result.user.city ?? "", address: result.user.address ?? "" });
-      setNotice(authMode === "register" ? "Аккаунт создан" : "Профиль открыт");
+      if (authMode === "register") {
+        const credential = await createUserWithEmailAndPassword(firebaseAuth, authEmail.trim(), authPassword);
+        await sendEmailVerification(credential.user);
+        setVerificationPending(true);
+        setAuthNotice(`Аккаунт создан. Подтвердите email по ссылке, отправленной на ${credential.user.email ?? authEmail}. После этого нажмите «Я подтвердил email».`);
+      } else {
+        const credential = await signInWithEmailAndPassword(firebaseAuth, authEmail.trim(), authPassword);
+        if (!credential.user.emailVerified) {
+          await sendEmailVerification(credential.user);
+          setVerificationPending(true);
+          setAuthNotice(`Сначала подтвердите email по ссылке, отправленной на ${credential.user.email ?? authEmail}.`);
+        } else {
+          await establishFirebaseSession(credential.user);
+        }
+      }
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Не удалось выполнить вход");
+      setAuthNotice(firebaseErrorMessage(error));
+    } finally { setProfileBusy(false); }
+  };
+
+  const checkEmailVerification = async () => {
+    if (!firebaseAuth?.currentUser) {
+      setAuthNotice("Войдите снова после подтверждения email.");
+      setVerificationPending(false);
+      return;
+    }
+    setProfileBusy(true);
+    setAuthNotice("");
+    try {
+      await reload(firebaseAuth.currentUser);
+      const user = firebaseAuth.currentUser;
+      if (!user.emailVerified) {
+        setAuthNotice("Подтверждение пока не найдено. Откройте ссылку из письма, затем попробуйте ещё раз.");
+        return;
+      }
+      await establishFirebaseSession(user);
+    } catch (error) {
+      setAuthNotice(firebaseErrorMessage(error));
+    } finally { setProfileBusy(false); }
+  };
+
+  const resendVerificationEmail = async () => {
+    if (!firebaseAuth?.currentUser) {
+      setAuthNotice("Сессия регистрации завершена. Войдите в аккаунт, чтобы запросить письмо ещё раз.");
+      return;
+    }
+    setProfileBusy(true);
+    setAuthNotice("");
+    try {
+      await sendEmailVerification(firebaseAuth.currentUser);
+      setAuthNotice(`Письмо отправлено повторно на ${firebaseAuth.currentUser.email ?? authEmail}.`);
+    } catch (error) {
+      setAuthNotice(firebaseErrorMessage(error));
+    } finally { setProfileBusy(false); }
+  };
+
+  const returnToLogin = async () => {
+    try {
+      if (firebaseAuth) await signOut(firebaseAuth);
+      setVerificationPending(false);
+      setAuthNotice("");
+      setAuthMode("login");
+    } catch (error) {
+      setAuthNotice(firebaseErrorMessage(error));
+    }
+  };
+
+  const logout = async () => {
+    localStorage.removeItem("uriona-access-token");
+    setAuthToken("");
+    setProfile(null);
+    if (!firebaseAuth) return;
+    try {
+      await signOut(firebaseAuth);
+    } catch (error) {
+      setNotice(firebaseErrorMessage(error));
+    }
+  };
+
+  const submitPasswordReset = async () => {
+    if (!firebaseAuth) {
+      setAuthNotice("Firebase ещё не настроен. Добавьте параметры веб-приложения Firebase в окружение frontend.");
+      return;
+    }
+    setProfileBusy(true);
+    setAuthNotice("");
+    try {
+      await sendPasswordResetEmail(firebaseAuth, authEmail.trim());
+      setAuthNotice("Если аккаунт с таким email существует, на него отправлена ссылка для сброса пароля.");
+    } catch (error) {
+      setAuthNotice(firebaseErrorMessage(error));
     } finally { setProfileBusy(false); }
   };
 
@@ -323,7 +589,7 @@ export function App() {
         </div>
 
         <div className="category-grid">
-          {categories.length === 0 && <p className="catalog-state">{categoriesLoading ? text.loadingCatalog : categoriesError || text.noGoods}</p>}
+          {categories.length === 0 && renderCatalogState(categoriesLoading ? text.loadingCatalog : categoriesError || text.noGoods, !categoriesLoading && Boolean(categoriesError))}
           {categories.map((category, index) => (
             <button
               key={category.id}
@@ -351,7 +617,7 @@ export function App() {
         </div>
 
         <div className="product-grid">
-          {catalogMessage ? <p className="catalog-state">{catalogMessage}</p> : visibleProducts.slice(0, 8).map((product, index) => {
+          {catalogMessage ? renderCatalogState(catalogMessage, Boolean(catalogError)) : visibleProducts.slice(0, 8).map((product, index) => {
             const isLiked = liked.includes(product.id);
             const price = formatUzs(product.priceMinor);
             const tag = product.status === "sale" ? "Скидка" : product.status === "popular" ? "Популярно" : "Новинка";
@@ -364,12 +630,8 @@ export function App() {
                   <button
                     type="button"
                     className={`wish-btn ${isLiked ? "active" : ""}`}
-                    onClick={() => {
-                      setLiked((items) =>
-                        items.includes(product.id) ? items.filter((id) => id !== product.id) : [...items, product.id],
-                      );
-                    }}
-                    aria-label="Добавить в избранное"
+                    onClick={() => toggleFavorite(product.id)}
+                    aria-label={isLiked ? "Удалить из избранного" : "Добавить в избранное"}
                   >
                     <Heart size={15} fill={isLiked ? "currentColor" : "none"} />
                   </button>
@@ -422,7 +684,7 @@ export function App() {
       </div>
 
       <div className="category-grid large-grid">
-        {categories.length === 0 && <p className="catalog-state">{categoriesLoading ? "Загружаем категории..." : categoriesError || "Категории не найдены."}</p>}
+        {categories.length === 0 && renderCatalogState(categoriesLoading ? text.loadingCatalog : categoriesError || text.noGoods, !categoriesLoading && Boolean(categoriesError))}
         {categories.map((category, index) => (
           <button
             key={category.id}
@@ -455,11 +717,14 @@ export function App() {
       </div>
 
       <div className="product-grid compact-grid">
-        {catalogMessage ? <p className="catalog-state">{catalogMessage}</p> : visibleProducts.map((product, index) => (
+        {catalogMessage ? renderCatalogState(catalogMessage, Boolean(catalogError)) : visibleProducts.map((product, index) => (
           <article key={product.id} className="product-card compact-card">
             <div className={`product-media media-${index % 5}`}>
               {product.imageUrl && <img src={product.imageUrl} alt={product.titleRu || product.titleUz} loading="lazy" />}
               <span className="product-tag">{product.status === "sale" ? "Скидка" : "Новинка"}</span>
+              <button type="button" className={`wish-btn ${liked.includes(product.id) ? "active" : ""}`} onClick={() => toggleFavorite(product.id)} aria-label={liked.includes(product.id) ? "Удалить из избранного" : "Добавить в избранное"}>
+                <Heart size={15} fill={liked.includes(product.id) ? "currentColor" : "none"} />
+              </button>
             </div>
             <div className="product-body">
               <span className="product-category">{product.category?.nameRu}</span>
@@ -487,7 +752,7 @@ export function App() {
       </div>
 
       <div className="product-grid compact-grid">
-        {hotMessage ? <p className="catalog-state">{hotMessage}</p> : hotProducts.map((product, index) => (
+        {hotMessage ? renderCatalogState(hotMessage, Boolean(catalogError)) : hotProducts.map((product, index) => (
             <article key={product.id} className="product-card compact-card">
               <div className={`product-media media-${index % 5}`}>
                 {product.imageUrl && <img src={product.imageUrl} alt={product.titleRu || product.titleUz} loading="lazy" />}
@@ -520,11 +785,11 @@ export function App() {
       <div className="info-card accent" style={{ marginBottom: 18 }}>
         <small>Спецпредложение</small>
         <h3>Скидка до 50% на популярные категории</h3>
-        <p>Промокод SAVE10 действует на все заказы от 500 000 сум.</p>
+        <p>Тестовый промокод SAVE10 действует на заказы от 500 000 сум.</p>
       </div>
 
       <div className="product-grid compact-grid">
-        {saleMessage ? <p className="catalog-state">{saleMessage}</p> : saleProducts.map((product, index) => (
+        {saleMessage ? renderCatalogState(saleMessage, Boolean(catalogError)) : saleProducts.map((product, index) => (
           <article key={product.id} className="product-card compact-card">
             <div className={`product-media media-${index % 5}`}>
               {product.imageUrl && <img src={product.imageUrl} alt={product.titleRu || product.titleUz} loading="lazy" />}
@@ -591,14 +856,18 @@ export function App() {
       <div className="section-head panel-head">
         <div>
           <small>Поддержка</small>
-          <h2>Свяжитесь с нами</h2>
+          <h2>Центр помощи</h2>
         </div>
       </div>
-
-      <div className="profile-list">
-        <div className="profile-item"><span>Телефон</span><b>+998 90 123 45 67</b></div>
-        <div className="profile-item"><span>Чат</span><b>Поддержка 24/7</b></div>
-        <div className="profile-item"><span>Email</span><b>Поддержка URIONA</b></div>
+      <div className="profile-help">
+        <details><summary>Как оформить заказ?</summary><p>Добавьте доступные товары в корзину и перейдите к оформлению. Сейчас оформление и приём оплаты ещё не подключены.</p></details>
+        <details><summary>Где посмотреть статус заказа?</summary><p>Статус оформленного заказа будет доступен в профиле, в разделе «Мои заказы».</p></details>
+        <details><summary>Почему каталог может быть недоступен?</summary><p>Каталог зависит от разрешений AliExpress Open Platform. При отказе API Uriona показывает сообщение и кнопку повтора запроса.</p></details>
+        <div className="profile-help-actions">
+          <button type="button" className="secondary-btn" onClick={() => goTo("Профиль")}>Открыть профиль</button>
+          <button type="button" className="secondary-btn" onClick={() => goTo("Корзина")}>Открыть корзину</button>
+        </div>
+        <p className="profile-hint">Контактный канал поддержки пока не настроен. Здесь не указан фиктивный телефон или неработающий чат.</p>
       </div>
     </section>
   );
@@ -616,9 +885,9 @@ export function App() {
       {cartEntryList.length === 0 ? (
         <div className="empty-state">
           <ShoppingBag size={38} />
-          <h3>Корзина пуста</h3>
-          <p>Добавьте товары из каталога и вернитесь сюда.</p>
-          <button type="button" className="primary-btn" onClick={() => goTo("Категории", "Каталог открыт")}>К покупкам</button>
+          <h3>{text.emptyCart}</h3>
+          <p>{text.addFromCatalog}</p>
+          <button type="button" className="primary-btn" onClick={() => goTo("Категории", "Каталог открыт")}>{text.shop}</button>
         </div>
       ) : (
         <>
@@ -642,10 +911,18 @@ export function App() {
           </div>
 
           <div className="promo-box">
-            <label>Промокод</label>
+            <label htmlFor="promo-code">Промокод</label>
             <div className="promo-row">
-              <input value={promo} onChange={(event) => setPromo(event.target.value)} placeholder="SAVE10" />
-              <button type="button" onClick={() => setNotice(promo.trim() ? `Промокод ${promo.trim()} активирован` : "Введите промокод")}>Применить</button>
+              <input
+                id="promo-code"
+                value={promo}
+                onChange={(event) => {
+                  setPromo(event.target.value);
+                  setAppliedPromo("");
+                }}
+                placeholder="SAVE10"
+              />
+              <button type="button" onClick={applyPromo}>Применить</button>
             </div>
           </div>
 
@@ -656,13 +933,30 @@ export function App() {
             <div className="grand"><span>Итого</span><b>{formatUzs(total)}</b></div>
           </div>
 
-          <button type="button" className="primary-btn checkout-btn" onClick={() => goTo("Профиль", "Заказ оформлен — скоро")}>Перейти к оформлению <ArrowRight size={18} /></button>
+          <button type="button" className="primary-btn checkout-btn" onClick={() => setNotice("Оформление заказа ещё не подключено")}>
+            Перейти к оформлению <ArrowRight size={18} />
+          </button>
+          <p className="checkout-note">Оформление заказа пока недоступно.</p>
         </>
       )}
     </section>
   );
 
   const renderProfile = () => {
+    const savedProducts = liked.flatMap((id) => {
+      const product = knownProducts.find((item) => item.id === id);
+      return product ? [product] : [];
+    });
+    const unavailableFavorites = liked.length - savedProducts.length;
+    const visibleOrders = orders.filter((order) => {
+      const isArchived = order.status === "DELIVERED" || order.status === "CANCELLED";
+      return orderFilter === "all" || (orderFilter === "archive" ? isArchived : !isArchived);
+    });
+    const activeOrderCount = orders.filter((order) => order.status !== "DELIVERED" && order.status !== "CANCELLED").length;
+    const orderDate = (value: string) => {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? "Дата не указана" : new Intl.DateTimeFormat(language === "uz" ? "uz-UZ" : language === "en" ? "en-US" : "ru-RU", { dateStyle: "medium" }).format(date);
+    };
     const profileMenuItems: Array<{ key: typeof profileSection; label: string; Icon: typeof UserRound }> = [
       { key: "overview", label: "Обзор", Icon: UserRound },
       { key: "orders", label: "Мои заказы", Icon: Package },
@@ -682,16 +976,35 @@ export function App() {
         <div className="auth-panel">
           <div className="profile-header">
             <div className="profile-avatar"><LogoMark /></div>
-            <div><small>Личный кабинет</small><h2>{authMode === "login" ? "Войти в URIONA" : "Создать аккаунт"}</h2></div>
+            <div><small>Личный кабинет</small><h2>{verificationPending ? "Подтвердите email" : authMode === "login" ? "Войти в URIONA" : authMode === "register" ? "Создать аккаунт" : "Сбросить пароль"}</h2></div>
           </div>
-          <p className="profile-intro">{authMode === "login" ? "Войдите, чтобы управлять заказами, адресами и избранным." : "Создайте аккаунт URIONA за несколько секунд."}</p>
-          <label>Email<input type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="name@example.com" /></label>
-          <label>Пароль<input type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="Минимум 8 символов" /></label>
-          <div className="profile-actions">
-            <button type="button" className="primary-btn" disabled={profileBusy || !authEmail || authPassword.length < 8} onClick={() => void submitAuth()}>{authMode === "login" ? "Войти" : "Зарегистрироваться"}</button>
-            <button type="button" className="secondary-btn" onClick={() => setAuthMode(authMode === "login" ? "register" : "login")}>{authMode === "login" ? "Создать аккаунт" : "Уже есть аккаунт"}</button>
-          </div>
-          <p className="profile-hint">Телефон можно добавить позже в настройках профиля. Подтверждение телефона пока не требуется.</p>
+          {verificationPending ? (
+            <>
+              <p className="profile-intro">Для защиты аккаунта подтвердите адрес электронной почты по ссылке в письме. До подтверждения доступ к профилю и заказам не выдаётся.</p>
+              <div className="profile-actions">
+                <button type="button" className="primary-btn" disabled={profileBusy} onClick={() => void checkEmailVerification()}>Я подтвердил email</button>
+                <button type="button" className="secondary-btn" disabled={profileBusy} onClick={() => void resendVerificationEmail()}>Отправить письмо ещё раз</button>
+                <button type="button" className="secondary-btn" disabled={profileBusy} onClick={() => void returnToLogin()}>Вернуться ко входу</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="profile-intro">{authMode === "login" ? "Войдите, чтобы управлять заказами, адресами и избранным." : authMode === "register" ? "Создайте аккаунт. Для завершения регистрации нужно подтвердить email." : "Укажите email — отправим ссылку для создания нового пароля."}</p>
+              <form className="auth-form" onSubmit={(event) => { event.preventDefault(); void (authMode === "reset" ? submitPasswordReset() : submitAuth()); }}>
+                <label>Email<input type="email" autoComplete="email" required value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="name@example.com" /></label>
+                {authMode !== "reset" && <label>Пароль<input type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} minLength={8} required value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="Минимум 8 символов" /></label>}
+                <div className="profile-actions">
+                  <button type="submit" className="primary-btn" disabled={profileBusy || !firebaseConfigReady || !authEmail || (authMode !== "reset" && authPassword.length < 8)}>{profileBusy ? "Подождите…" : authMode === "login" ? "Войти" : authMode === "register" ? "Зарегистрироваться" : "Отправить ссылку"}</button>
+                  {authMode === "login" && <button type="button" className="secondary-btn" onClick={() => { setAuthMode("register"); setAuthNotice(""); }}>Создать аккаунт</button>}
+                  {authMode === "register" && <button type="button" className="secondary-btn" onClick={() => { setAuthMode("login"); setAuthNotice(""); }}>Уже есть аккаунт</button>}
+                  {authMode === "reset" && <button type="button" className="secondary-btn" onClick={() => { setAuthMode("login"); setAuthNotice(""); }}>Вернуться ко входу</button>}
+                </div>
+              </form>
+              {authMode === "login" && <button type="button" className="auth-link" onClick={() => { setAuthMode("reset"); setAuthNotice(""); }}>Забыли пароль?</button>}
+              {!firebaseConfigReady && <p className="auth-message error" role="alert">Firebase не настроен для этого сайта: кнопки входа временно отключены. Нужны настройки Web App из Firebase Console и включённый метод Email/Password.</p>}
+            </>
+          )}
+          {authNotice && <p className="auth-message" role="status">{authNotice}</p>}
         </div>
       ) : (
         <>
@@ -704,14 +1017,14 @@ export function App() {
               {profileMenuItems.map(({ key, label, Icon: MenuIcon }) => {
                 return <button key={key} type="button" className={profileSection === key ? "active" : ""} onClick={() => setProfileSection(key)}><MenuIcon size={17} />{label}</button>;
               })}
-              <button type="button" className="profile-logout" onClick={() => { localStorage.removeItem("uriona-access-token"); setAuthToken(""); setProfile(null); }}><X size={17} />Выйти</button>
+              <button type="button" className="profile-logout" onClick={() => void logout()}><X size={17} />Выйти</button>
             </nav>
             <div className="profile-content">
               {profileSection === "overview" && <>
                 <div className="mini-grid">
-                  <div className="mini-tile"><Package size={18} /><span>Заказы</span><b>0</b></div>
-                  <div className="mini-tile"><CreditCard size={18} /><span>Оплата</span><b>Добавить</b></div>
-                  <div className="mini-tile"><Heart size={18} /><span>Избранное</span><b>{liked.length}</b></div>
+                  <button type="button" className="mini-tile" onClick={() => setProfileSection("orders")}><Package size={18} /><span>Активные заказы</span><b>{activeOrderCount}</b></button>
+                  <button type="button" className="mini-tile" onClick={() => setProfileSection("payments")}><CreditCard size={18} /><span>Оплата</span><b>Настроить</b></button>
+                  <button type="button" className="mini-tile" onClick={() => setProfileSection("wishlist")}><Heart size={18} /><span>Избранное</span><b>{liked.length}</b></button>
                 </div>
                 <div className="profile-section-heading"><div><small>Ваш аккаунт</small><h3>Личные данные</h3></div><ShieldCheck size={22} /></div>
                 <div className="profile-form">
@@ -723,16 +1036,73 @@ export function App() {
                 </div>
                 <div className="profile-actions"><button type="button" className="primary-btn" disabled={profileBusy} onClick={() => void saveProfile()}>Сохранить профиль</button></div>
               </>}
-              {profileSection === "orders" && <div className="profile-empty"><Package size={30} /><h3>Заказов пока нет</h3><p>Ваши покупки будут отображаться здесь.</p><button type="button" className="secondary-btn" onClick={() => goTo("Каталог")}>Перейти в каталог</button></div>}
-              {profileSection === "wishlist" && <div className="profile-empty"><Heart size={30} /><h3>Моё избранное</h3><p>Сохраняйте товары, чтобы быстро вернуться к ним позже.</p><button type="button" className="secondary-btn" onClick={() => goTo("Каталог")}>Найти товары</button></div>}
-              {profileSection === "stores" && <div className="profile-empty"><Store size={30} /><h3>Любимые магазины</h3><p>Подписанные магазины будут отображаться здесь.</p></div>}
-              {profileSection === "reviews" && <div className="profile-empty"><Star size={30} /><h3>Мои отзывы</h3><p>Отзывы можно будет оставить после получения заказа.</p></div>}
-              {profileSection === "questions" && <div className="profile-empty"><HelpCircle size={30} /><h3>Вопросы и ответы</h3><p>История вопросов по товарам появится здесь.</p></div>}
-              {profileSection === "coupons" && <div className="profile-empty"><Ticket size={30} /><h3>Купоны</h3><p>Доступные скидки и купоны будут собраны в этом разделе.</p></div>}
-              {profileSection === "addresses" && <div className="profile-empty"><MapPin size={30} /><h3>Адреса доставки</h3><p>Добавьте адрес при первом оформлении заказа.</p></div>}
-              {profileSection === "payments" && <div className="profile-empty"><CreditCard size={30} /><h3>Способы оплаты</h3><p>Подключите UZCARD или HUMO во время оформления.</p></div>}
-              {profileSection === "settings" && <div className="profile-empty"><ShieldCheck size={30} /><h3>Настройки аккаунта</h3><p>Email используется для входа в URIONA.</p></div>}
-              {profileSection === "support" && <div className="profile-empty"><MessageCircle size={30} /><h3>Служба поддержки</h3><p>Мы поможем с заказом, оплатой и доставкой.</p><button type="button" className="secondary-btn" onClick={() => setNotice("Поддержка скоро будет доступна")}>Открыть чат</button></div>}
+              {profileSection === "orders" && <>
+                <div className="profile-section-heading"><div><small>История покупок</small><h3>Мои заказы</h3></div><button type="button" className="text-action" onClick={() => setOrdersAttempt((attempt) => attempt + 1)} disabled={ordersLoading}>Обновить</button></div>
+                <div className="profile-filter-row" role="group" aria-label="Фильтр заказов">
+                  {(["all", "active", "archive"] as const).map((filter) => <button type="button" key={filter} className={orderFilter === filter ? "active" : ""} aria-pressed={orderFilter === filter} onClick={() => setOrderFilter(filter)}>{filter === "all" ? "Все" : filter === "active" ? "Активные" : "Архив"}</button>)}
+                </div>
+                {ordersLoading ? <div className="profile-empty"><Package size={30} /><p>Загружаем заказы…</p></div>
+                  : ordersError ? <div className="profile-empty" role="alert"><Package size={30} /><h3>Не удалось загрузить заказы</h3><p>{ordersError}</p><button type="button" className="secondary-btn" onClick={() => setOrdersAttempt((attempt) => attempt + 1)}>Повторить</button></div>
+                  : visibleOrders.length === 0 ? <div className="profile-empty"><Package size={30} /><h3>{orders.length ? "В этом разделе пока нет заказов" : "Заказов пока нет"}</h3><p>Оформленные покупки и их статусы появятся здесь.</p><button type="button" className="secondary-btn" onClick={() => goTo("Каталог")}>Перейти в каталог</button></div>
+                  : <div className="profile-order-list">{visibleOrders.map((order) => (
+                    <article className="profile-order-card" key={order.id}>
+                      <div className="profile-order-top"><div><small>Заказ {order.id.slice(0, 8)}</small><time>{orderDate(order.createdAt)}</time></div><span className={`order-status status-${order.status.toLowerCase()}`}>{orderStatusLabels[order.status] ?? order.status}</span></div>
+                      <div className="profile-order-items">{order.items.map((item) => <div className="profile-order-item" key={item.id}>
+                        {item.product?.imageUrl ? <img src={item.product.imageUrl} alt="" loading="lazy" /> : <span className="order-item-placeholder"><ShoppingBag size={16} /></span>}
+                        <span>{item.product?.titleRu || item.product?.titleUz || `Товар ${item.productId.slice(0, 8)}`}</span><b>× {item.quantity}</b>
+                      </div>)}</div>
+                      <div className="profile-order-bottom"><span>{order.deliveryAddress}</span><b>{formatUzs(order.totalMinor)}</b></div>
+                    </article>
+                  ))}</div>}
+              </>}
+              {profileSection === "wishlist" && <>
+                <div className="profile-section-heading"><div><small>Сохранённые товары</small><h3>Избранное · {liked.length}</h3></div></div>
+                {savedProducts.length ? <div className="product-grid compact-grid">{savedProducts.map((product, index) => (
+                  <article className="product-card compact-card" key={product.id}>
+                    <div className={`product-media media-${index % 5}`}>{product.imageUrl && <img src={product.imageUrl} alt={product.titleRu || product.titleUz} loading="lazy" />}</div>
+                    <div className="product-body"><span className="product-category">{product.category?.nameRu || "Товар"}</span><h3>{product.titleRu || product.titleUz}</h3>
+                      <div className="price-row"><strong>{formatUzs(product.priceMinor)}</strong><button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}><ShoppingBag size={14} />В корзину</button></div>
+                      <div className="profile-card-actions"><button type="button" onClick={() => openProductDetails(product)}>Подробнее</button><button type="button" onClick={() => toggleFavorite(product.id)}>Убрать</button></div>
+                    </div>
+                  </article>
+                ))}</div> : <div className="profile-empty"><Heart size={30} /><h3>Избранное пока пусто</h3><p>Нажимайте на сердечко в карточке товара — товары сохранятся на этом устройстве.</p><button type="button" className="secondary-btn" onClick={() => goTo("Каталог")}>Найти товары</button></div>}
+                {unavailableFavorites > 0 && <p className="profile-hint">{unavailableFavorites} сохранённых товаров сейчас отсутствуют в локальном каталоге. Когда каталог загрузится, они появятся здесь.</p>}
+              </>}
+              {profileSection === "stores" && <div className="profile-empty"><Store size={30} /><h3>Любимые магазины</h3><p>В текущем каталоге Uriona AliExpress не передаёт данные продавцов, необходимые для подписки на магазин. Раздел заработает после подтверждения доступа к данным магазинов.</p><button type="button" className="secondary-btn" onClick={() => goTo("Каталог")}>Вернуться в каталог</button></div>}
+              {profileSection === "reviews" && <div className="profile-empty"><Star size={30} /><h3>Мои отзывы</h3><p>Отзывы можно оставить после доставки заказа. Публикация и хранение отзывов пока не подключены.</p><button type="button" className="secondary-btn" onClick={() => setProfileSection("orders")}>Мои заказы</button></div>}
+              {profileSection === "questions" && <div className="profile-empty"><HelpCircle size={30} /><h3>Вопросы и ответы</h3><p>Вопросы продавцам и история ответов пока не подключены: для этого нужен разрешённый API продавцов и отдельный раздел товара.</p><button type="button" className="secondary-btn" onClick={() => goTo("Поддержка")}>Открыть справку</button></div>}
+              {profileSection === "coupons" && <div className="profile-coupon">
+                <div className="coupon-icon"><Ticket size={22} /></div><div><small>Купон Uriona</small><h3>SAVE10 · скидка 10%</h3><p>Действует на товары при сумме от 500 000 сум. Применение будет доступно в корзине.</p><button type="button" className="secondary-btn" onClick={() => { setPromo("SAVE10"); goTo("Корзина", "Промокод добавлен в корзину"); }}>Перейти в корзину</button></div>
+              </div>}
+              {profileSection === "addresses" && <>
+                <div className="profile-section-heading"><div><small>Для оформления заказа</small><h3>Основной адрес доставки</h3></div><MapPin size={22} /></div>
+                <div className="profile-form">
+                  <label>Получатель<input value={profileForm.name} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} placeholder="Имя получателя" /></label>
+                  <label>Телефон<input type="tel" value={profileForm.phone} onChange={(event) => setProfileForm({ ...profileForm, phone: event.target.value })} placeholder="+998" /></label>
+                  <label>Город<input value={profileForm.city} onChange={(event) => setProfileForm({ ...profileForm, city: event.target.value })} placeholder="Ташкент" /></label>
+                  <label>Улица, дом, квартира<textarea value={profileForm.address} onChange={(event) => setProfileForm({ ...profileForm, address: event.target.value })} placeholder="Улица, дом, квартира" rows={3} /></label>
+                </div>
+                <div className="profile-actions"><button type="button" className="primary-btn" disabled={profileBusy} onClick={() => void saveProfile()}>Сохранить адрес</button></div>
+                <p className="profile-hint">Сейчас профиль поддерживает один основной адрес. Несколько адресов добавим вместе с оформлением заказа.</p>
+              </>}
+              {profileSection === "payments" && <div className="profile-empty"><CreditCard size={30} /><h3>Оплата картой пока не подключена</h3><p>Не вводите и не отправляйте данные банковской карты в профиль. Подключение UZCARD/HUMO появится после настройки платёжного провайдера.</p></div>}
+              {profileSection === "settings" && <>
+                <div className="profile-section-heading"><div><small>Персональные настройки</small><h3>Настройки аккаунта</h3></div><ShieldCheck size={22} /></div>
+                <div className="profile-form">
+                  <label>Email<input type="email" value={profileForm.email} readOnly /></label>
+                  <label>Язык интерфейса<select value={language} onChange={(event) => setLanguage(event.target.value as Language)}><option value="ru">Русский</option><option value="uz">O‘zbekcha</option><option value="en">English</option></select></label>
+                </div>
+                <div className="profile-setting-row"><span>Тема оформления</span><button type="button" className="secondary-btn" onClick={() => setLightMode((mode) => !mode)}>{lightMode ? "Включить тёмную тему" : "Включить светлую тему"}</button></div>
+                <p className="profile-hint">Язык и тема сохраняются на этом устройстве. Email используется для входа; смена пароля пока не подключена.</p>
+              </>}
+              {profileSection === "support" && <div className="profile-help">
+                <div className="profile-section-heading"><div><small>Помощь по Uriona</small><h3>Частые вопросы</h3></div><MessageCircle size={22} /></div>
+                <details><summary>Как найти товар?</summary><p>Откройте каталог и воспользуйтесь строкой поиска. Доступность реального каталога зависит от ответа AliExpress API.</p></details>
+                <details><summary>Где проверить заказ?</summary><p>После оформления заказа его статус появится в разделе «Мои заказы» профиля.</p></details>
+                <details><summary>Как сохранить товар?</summary><p>Нажмите на значок сердца на карточке товара. Избранное сохраняется в браузере на этом устройстве.</p></details>
+                <details><summary>Как связаться с поддержкой?</summary><p>Контактный канал поддержки Uriona ещё не настроен. Мы не показываем фиктивный телефон или неработающий чат.</p></details>
+                <button type="button" className="secondary-btn" onClick={() => goTo("Поддержка")}>Раздел помощи</button>
+              </div>}
             </div>
           </div>
         </>
@@ -823,7 +1193,7 @@ export function App() {
           <section className="product-dialog" role="dialog" aria-modal="true" aria-labelledby="product-dialog-title">
             <button type="button" className="product-dialog-close" onClick={() => setDetailProduct(null)} aria-label="Закрыть"><X size={20} /></button>
             {detailProduct.imageUrl && <img className="product-dialog-image" src={detailProduct.imageUrl} alt={detailProduct.titleRu || detailProduct.titleUz} />}
-            <small>{detailLoading ? "Загружаем данные AliExpress..." : detailProduct.category?.nameRu || "Товар AliExpress"}</small>
+            <small>{detailProduct.category?.nameRu || "Товар AliExpress"}</small>
             <h2 id="product-dialog-title">{detailProduct.titleRu || detailProduct.titleUz}</h2>
             <p>{detailProduct.descriptionRu || detailProduct.descriptionUz || "Описание не предоставлено API."}</p>
             <strong>{formatUzs(detailProduct.priceMinor)}</strong>

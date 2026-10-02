@@ -1,23 +1,15 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from "@nestjs/common";
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { BadRequestException, ConflictException, Injectable, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
+import { createHash, randomBytes } from "node:crypto";
+import { getAuth } from "firebase-admin/auth";
+import { getApps, initializeApp } from "firebase-admin/app";
+import type { User } from "@prisma/client";
 import { PrismaService } from "../../database/prisma.service";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
-const hashPassword = (password: string) => {
-  const salt = randomBytes(16).toString("hex");
-  const key = scryptSync(password, salt, 64).toString("hex");
-  return `${salt}:${key}`;
-};
-const verifyPassword = (password: string, stored: string) => {
-  const [salt, key] = stored.split(":");
-  if (!salt || !key) return false;
-  const actual = scryptSync(password, salt, 64);
-  const expected = Buffer.from(key, "hex");
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-};
 
-type ProfileUpdate = { phone?: string; name?: string; email?: string; city?: string; address?: string; language?: string };
-type SessionResult = { accessToken: string; expiresInSeconds: number; user: Awaited<ReturnType<AuthService["getProfile"]>> };
+type ProfileUpdate = { phone?: string; name?: string; city?: string; address?: string; language?: string };
+type PublicUser = Pick<User, "id" | "phone" | "email" | "name" | "city" | "address" | "language" | "role">;
+type SessionResult = { accessToken: string; expiresInSeconds: number; user: PublicUser };
 
 @Injectable()
 export class AuthService {
@@ -36,27 +28,62 @@ export class AuthService {
   async validateSession(raw: string) {
     const session = await this.prisma.session.findFirst({ where: { tokenHash: hash(raw), expiresAt: { gt: new Date() } }, include: { user: true } });
     if (!session) throw new UnauthorizedException("Invalid or expired session");
-    return session.user;
+    return this.toPublicUser(session.user);
   }
 
   async getProfile(token: string) {
     return this.validateSession(token);
   }
 
-  async register(email: string, password: string): Promise<SessionResult> {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (await this.prisma.user.findUnique({ where: { email: normalizedEmail } })) {
-      throw new ConflictException("Email is already registered");
+  async authenticateFirebase(idToken: string): Promise<SessionResult> {
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    if (!projectId) {
+      throw new ServiceUnavailableException("Firebase authentication is not configured on the server");
     }
-    const user = await this.prisma.user.create({ data: { email: normalizedEmail, passwordHash: hashPassword(password) } });
-    return this.createSession(user);
-  }
 
-  async login(email: string, password: string): Promise<SessionResult> {
-    const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
-    if (!user?.passwordHash || !verifyPassword(password, user.passwordHash)) {
-      throw new UnauthorizedException("Invalid email or password");
+    const app = getApps().find((item) => item.options.projectId === projectId) ?? initializeApp({ projectId });
+    let decoded;
+    try {
+      decoded = await getAuth(app).verifyIdToken(idToken);
+    } catch {
+      throw new UnauthorizedException("Invalid or expired Firebase token");
     }
+
+    const email = decoded.email?.trim().toLowerCase();
+    if (!decoded.email_verified || !email) {
+      throw new UnauthorizedException("Verify your email address before signing in");
+    }
+
+    const byUid = await this.prisma.user.findUnique({ where: { firebaseUid: decoded.uid } });
+    if (byUid && byUid.email !== email) {
+      const emailOwner = await this.prisma.user.findUnique({ where: { email } });
+      if (emailOwner && emailOwner.id !== byUid.id) {
+        throw new ConflictException("This email is already linked to another account");
+      }
+      const user = await this.prisma.user.update({
+        where: { id: byUid.id },
+        data: { email, passwordHash: null }
+      });
+      return this.createSession(user);
+    }
+
+    const byEmail = byUid ?? await this.prisma.user.findUnique({ where: { email } });
+    if (byEmail?.firebaseUid && byEmail.firebaseUid !== decoded.uid) {
+      throw new ConflictException("This email is already linked to another Firebase account");
+    }
+
+    const user = byEmail
+      ? await this.prisma.user.update({
+        where: { id: byEmail.id },
+        data: { email, firebaseUid: decoded.uid, passwordHash: null }
+      })
+      : await this.prisma.user.create({
+        data: {
+          email,
+          firebaseUid: decoded.uid,
+          name: typeof decoded.name === "string" ? decoded.name : null
+        }
+      });
     return this.createSession(user);
   }
 
@@ -65,10 +92,15 @@ export class AuthService {
     return this.prisma.user.update({ where: { id: user.id }, data: update });
   }
 
-  private async createSession(user: Awaited<ReturnType<typeof this.validateSession>>) {
+  private async createSession(user: User): Promise<SessionResult> {
     const raw = randomBytes(32).toString("hex");
     await this.prisma.session.create({ data: { userId: user.id, tokenHash: hash(raw), expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) } });
-    return { accessToken: raw, expiresInSeconds: 30 * 24 * 60 * 60, user };
+    return { accessToken: raw, expiresInSeconds: 30 * 24 * 60 * 60, user: this.toPublicUser(user) };
+  }
+
+  private toPublicUser(user: User): PublicUser {
+    const { id, phone, email, name, city, address, language, role } = user;
+    return { id, phone, email, name, city, address, language, role };
   }
 
   async verifyOtp(phone: string, code: string) {

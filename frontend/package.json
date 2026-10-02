@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@firebase/app": "^0.16.2",
+    "@firebase/auth": "^1.13.6",
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",
     "react": "latest",
