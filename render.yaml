@@ -33,3 +33,5 @@ services:
         sync: false
       - key: ALIEXPRESS_OAUTH_SETUP_SECRET
         sync: false
+      - key: SERPAPI_API_KEY
+        sync: false

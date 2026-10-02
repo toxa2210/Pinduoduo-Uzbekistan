@@ -9,7 +9,7 @@ export class ApiRequestError extends Error {
   }
 }
 
-export type ApiCategory = { id: string; nameUz: string; nameRu: string; parentId?: string | null };
+export type ApiCategory = { id: string; nameUz: string; nameRu: string; parentId?: string | null; imageUrl?: string | null };
 export type ApiProduct = {
   id: string;
   categoryId: string | null;
@@ -23,6 +23,19 @@ export type ApiProduct = {
   imageUrl?: string | null;
   rating?: string;
   orders?: string;
+  skuId?: string;
+  variantLabel?: string;
+  brandName?: string;
+  attributes?: string;
+  sellerId?: string;
+  sellerName?: string;
+  sellerLogoUrl?: string;
+  sellerCountry?: string;
+  sellerRating?: string;
+  sellerPositiveRate?: string;
+  sellerFollowers?: string;
+  sellerDescription?: string;
+  inStock?: boolean;
   originalPriceMinor?: number;
   discountPercent?: number;
   category?: ApiCategory | null;
@@ -46,11 +59,18 @@ export type ApiOrder = {
     product?: Pick<ApiProduct, "id" | "titleRu" | "titleUz" | "imageUrl">;
   }>;
 };
+export type ImageSearchMatch = {
+  productId: string;
+  title: string;
+  link: string;
+  thumbnail: string;
+  source: string;
+};
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("Accept", "application/json");
-  if (init?.body && !headers.has("Content-Type")) {
+  if (init?.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   const res = await fetch(API_BASE + path, {
@@ -87,7 +107,19 @@ function firstString(...values: unknown[]): string {
   return value === undefined ? "" : String(value);
 }
 
-function marketplaceImageUrl(imageUrl: string | null): string | null {
+function flattenText(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (Array.isArray(value)) return value.map(flattenText).filter(Boolean).join(" ");
+  if (value && typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, item]) => `${key} ${flattenText(item)}`.trim())
+      .filter(Boolean)
+      .join(" ");
+  }
+  return "";
+}
+
+export function marketplaceImageUrl(imageUrl: string | null): string | null {
   if (!imageUrl) return null;
   const normalized = imageUrl.startsWith("//") ? `https:${imageUrl}` : imageUrl;
   try {
@@ -149,6 +181,26 @@ export function mapMarketplaceGoods(payload: unknown, priceCurrency: "CNY" | "UZ
       .split(",")[0] || null;
     const title = firstString(goods.product_title, goods.goods_name, goods.goods_title, goods.title) || "Товар маркетплейса";
     const description = firstString(goods.goods_desc, goods.goods_description, goods.description);
+    const brandName = firstString(goods.brand_name, goods.brandName, goods.brand, goods.product_brand);
+    const attributes = flattenText(goods.attributes ?? goods.product_attributes ?? goods.product_attribute);
+    const store = asObject(goods.ae_store_info ?? goods.store_info ?? goods.shop_info ?? goods.seller_info);
+    const sellerId = firstString(goods.store_id, goods.shop_id, goods.seller_id, goods.shopId, goods.sellerId, store.store_id, store.shop_id);
+    const sellerName = firstString(goods.store_name, goods.shop_name, goods.seller_name, goods.storeName, goods.shopName, goods.sellerName, store.store_name, store.shop_name);
+    const sellerImage = marketplaceImageUrl(firstString(goods.store_logo, goods.shop_logo, goods.seller_logo, goods.storeLogo, goods.shopLogo, store.store_logo, store.logo_url) || null);
+    const rawStock = goods.in_stock ?? goods.inStock ?? goods.stock_available ?? goods.available_stock ?? goods.stock_quantity ?? goods.quantity;
+    const inStock = typeof rawStock === "boolean"
+      ? rawStock
+      : typeof rawStock === "number"
+        ? rawStock > 0
+        : typeof rawStock === "string"
+          ? /^(?:true|yes|available)$/i.test(rawStock.trim())
+            ? true
+            : /^(?:false|no|unavailable|out of stock|0)$/i.test(rawStock.trim())
+              ? false
+              : /^\d+(?:\.\d+)?$/.test(rawStock.trim())
+                ? Number(rawStock) > 0
+                : undefined
+          : undefined;
     const imageUrls = asObject(goods.product_main_image_url);
     const rawImageUrl = firstString(
       goods.product_main_image_url,
@@ -172,6 +224,17 @@ export function mapMarketplaceGoods(payload: unknown, priceCurrency: "CNY" | "UZ
       imageUrl,
       rating: firstString(goods.score, goods.evaluate_rate, goods.evaluateRate) || undefined,
       orders: firstString(goods.orders, goods.order_count, goods.orderCount) || undefined,
+      brandName: brandName || undefined,
+      attributes: attributes || undefined,
+      sellerId: sellerId || undefined,
+      sellerName: sellerName || undefined,
+      sellerLogoUrl: sellerImage || undefined,
+      sellerCountry: firstString(goods.store_country, goods.shop_country, goods.seller_country, store.store_country, store.country_name) || undefined,
+      sellerRating: firstString(goods.store_rating, goods.shop_rating, goods.seller_rating, store.store_rating, store.evaluation_rating) || undefined,
+      sellerPositiveRate: firstString(goods.positive_feedback_rate, goods.store_positive_rate, goods.shop_positive_rate, store.positive_feedback_rate) || undefined,
+      sellerFollowers: firstString(goods.followers, goods.store_followers, goods.shop_followers, store.followers, store.follow_count) || undefined,
+      sellerDescription: firstString(goods.store_description, goods.shop_description, goods.seller_description, store.store_description, store.description) || undefined,
+      inStock,
       ...(originalPrice > price ? {
         originalPriceMinor: Math.round(originalPrice * (priceCurrency === "UZS" ? 100 : CNY_TO_UZS * 100)),
         discountPercent,
@@ -187,7 +250,17 @@ export function mapMarketplaceCategories(payload: unknown): ApiCategory[] {
     const id = firstString(category.category_id, category.cat_id, category.goods_cat_id, category.id);
     const name = firstString(category.category_name, category.cat_name, category.goods_cat_name, category.name);
     const parentId = firstString(category.parent_category_id, category.parent_id);
-    return id && name ? [{ id, nameUz: name, nameRu: name, parentId: parentId || null }] : [];
+    const rawImageUrl = firstString(
+      category.category_image_url,
+      category.category_pic_url,
+      category.category_image,
+      category.cat_pic_url,
+      category.image_url,
+      category.pic_url,
+    ) || null;
+    return id && name
+      ? [{ id, nameUz: name, nameRu: name, parentId: parentId || null, imageUrl: marketplaceImageUrl(rawImageUrl) }]
+      : [];
   });
 }
 
@@ -237,6 +310,14 @@ export const api = {
       request<unknown>(queryPath("/integrations/aliexpress/dropshipping/categories", params)),
     productDetails: (productId: string, params: Record<string, unknown> = {}) =>
       request<unknown>(queryPath(`/integrations/aliexpress/product/${encodeURIComponent(productId)}`, params)),
+    imageSearch: (image: File) => {
+      const form = new FormData();
+      form.append("image", image, image.name || "search-image");
+      return request<{ results: ImageSearchMatch[] }>("/integrations/aliexpress/image-search", {
+        method: "POST",
+        body: form,
+      });
+    },
     affiliateLinks: (params: Record<string, unknown> = {}) =>
       request<unknown>(queryPath("/integrations/aliexpress/affiliate/links", params)),
   },

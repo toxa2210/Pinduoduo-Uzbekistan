@@ -12,6 +12,14 @@ type AliExpressTokenResponse = {
   refresh_expires_in?: number | string;
 };
 
+type SerpApiImageMatch = {
+  productId: string;
+  title: string;
+  link: string;
+  thumbnail: string;
+  source: string;
+};
+
 @Injectable()
 export class AliexpressService {
   private readonly gateway: string;
@@ -441,6 +449,84 @@ export class AliexpressService {
 
   affiliateCategories(params: Record<string, unknown> = {}) {
     return this.call("aliexpress.affiliate.category.get", params);
+  }
+
+  async searchProductsByImage(image: { buffer: Buffer; mimetype: string; originalname: string }): Promise<{ results: SerpApiImageMatch[] }> {
+    const apiKey = this.config.get<string>("SERPAPI_API_KEY");
+    if (!apiKey) throw new ServiceUnavailableException("Image search is not configured");
+
+    const uploadUrl = new URL("https://serpapi.com/image");
+    uploadUrl.searchParams.set("api_key", apiKey);
+    const uploadForm = new FormData();
+    uploadForm.append("file", new Blob([new Uint8Array(image.buffer)], { type: image.mimetype }), image.originalname);
+    let imageId: string;
+    try {
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "POST",
+        body: uploadForm,
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+      const uploadPayload = await uploadResponse.json() as Record<string, unknown>;
+      if (!uploadResponse.ok || typeof uploadPayload.image_id !== "string") {
+        throw new ServiceUnavailableException("Image search provider rejected the upload");
+      }
+      imageId = uploadPayload.image_id;
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) throw error;
+      throw new ServiceUnavailableException("Image search provider did not respond to the upload");
+    }
+
+    const searchUrl = new URL("https://serpapi.com/search.json");
+    searchUrl.search = new URLSearchParams({
+      engine: "google_lens",
+      image_id: imageId,
+      type: "products",
+      q: "site:aliexpress.com",
+      hl: "ru",
+      country: "uz",
+      api_key: apiKey,
+    }).toString();
+    let payload: Record<string, unknown>;
+    try {
+      const response = await fetch(searchUrl, { signal: AbortSignal.timeout(this.timeoutMs) });
+      payload = await response.json() as Record<string, unknown>;
+      if (!response.ok || payload.error) {
+        throw new ServiceUnavailableException("Image search provider could not complete the search");
+      }
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) throw error;
+      throw new ServiceUnavailableException("Image search provider did not respond to the search");
+    }
+
+    const matches = [payload.shopping_results, payload.visual_matches, payload.exact_matches]
+      .filter(Array.isArray)
+      .flatMap((items) => items as unknown[]);
+    const results = new Map<string, SerpApiImageMatch>();
+    for (const item of matches) {
+      if (!item || typeof item !== "object") continue;
+      const match = item as Record<string, unknown>;
+      const link = typeof match.link === "string" ? match.link : "";
+      let url: URL;
+      try {
+        url = new URL(link);
+      } catch {
+        continue;
+      }
+      if (url.protocol !== "https:" || !/(^|\.)aliexpress\.com$/i.test(url.hostname)) continue;
+      const productId = url.pathname.match(/(?:item\/)?(\d{8,})(?:\.html)?/i)?.[1];
+      if (!productId || results.has(productId)) continue;
+      const thumbnail = typeof match.thumbnail === "string" ? match.thumbnail : "";
+      if (!thumbnail.startsWith("https://")) continue;
+      results.set(productId, {
+        productId,
+        title: typeof match.title === "string" ? match.title.slice(0, 300) : "AliExpress product",
+        link: url.toString(),
+        thumbnail,
+        source: typeof match.source === "string" ? match.source.slice(0, 120) : "AliExpress",
+      });
+      if (results.size >= 30) break;
+    }
+    return { results: Array.from(results.values()) };
   }
 
   generateAffiliateLinks(params: Record<string, unknown>) {

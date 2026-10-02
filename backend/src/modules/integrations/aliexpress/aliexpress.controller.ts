@@ -9,8 +9,11 @@ import {
   Param,
   Post,
   Query,
-  StreamableFile
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { AliexpressService } from "./aliexpress.service";
 
 const IMAGE_HOSTS = ["alicdn.com", "aliexpress-media.com"];
@@ -99,6 +102,22 @@ export class AliexpressController {
       && !url.password
       && !url.port
       && IMAGE_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`));
+  }
+
+  @Post("image-search")
+  @UseInterceptors(FileInterceptor("image", {
+    limits: { fileSize: 8 * 1024 * 1024 },
+    fileFilter: (_request, file, callback) => {
+      if (!IMAGE_CONTENT_TYPES.has(file.mimetype)) {
+        callback(new BadRequestException("Only AVIF, GIF, JPEG, PNG, and WebP images are supported"), false);
+        return;
+      }
+      callback(null, true);
+    },
+  }))
+  imageSearch(@UploadedFile() image?: { buffer: Buffer; mimetype: string; originalname: string }) {
+    if (!image) throw new BadRequestException("An image file is required");
+    return this.aliexpress.searchProductsByImage(image);
   }
 
   @Post("oauth/start")

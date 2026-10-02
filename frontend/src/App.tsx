@@ -1,37 +1,61 @@
-import { cloneElement, isValidElement, useEffect, useMemo, useState, type ReactNode } from "react";
+import { cloneElement, isValidElement, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   ArrowRight,
+  Baby,
+  BookOpen,
+  Camera,
+  CarFront,
+  ChevronLeft,
   ChevronRight,
+  Dumbbell,
   CreditCard,
+  Grid2X2,
+  Grid3X3,
   Heart,
   HelpCircle,
+  Headphones,
+  House,
+  LayoutGrid,
   Languages,
   MapPin,
   MessageCircle,
   Minus,
   Package,
+  PawPrint,
   Plus,
   Search,
+  Share2,
   ShieldCheck,
+  Shirt,
+  Smartphone,
+  Sofa,
+  Sparkles,
   ShoppingBag,
   Star,
   Store,
   Ticket,
   Truck,
   UserRound,
+  Utensils,
   X,
+  Watch,
   Zap,
   Moon,
   Sun,
 } from "lucide-react";
 import { createUserWithEmailAndPassword, getIdToken, reload, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from "@firebase/auth";
 import type { User as FirebaseUser } from "@firebase/auth";
-import { ApiRequestError, api, formatUzs, mapMarketplaceCategories, mapMarketplaceGoods, type ApiCategory, type ApiOrder, type ApiProduct, type ApiUser } from "./api";
+import { ApiRequestError, api, formatUzs, mapMarketplaceCategories, mapMarketplaceGoods, marketplaceImageUrl, type ApiCategory, type ApiOrder, type ApiProduct, type ApiUser, type ImageSearchMatch } from "./api";
+import { inferMarketplaceCategoryId, prepareMarketplaceQuery, productCardTitle, productPopularity, searchProducts, suggestCategories } from "./search";
 import { firebaseAuth, firebaseConfigReady } from "./firebase";
 
 const navItems = ["Главная", "Категории", "Корзина", "Профиль"] as const;
 type Language = "ru" | "en" | "uz";
-const HOME_RECOMMENDATION_KEYWORDS = ["phone", "home decor", "kitchen", "women fashion", "watch", "toys", "bag", "beauty"];
+const HOME_RECOMMENDATION_KEYWORDS = [
+  "phone", "home decor", "kitchen", "women fashion", "watch", "toys", "bag", "beauty",
+  "mens clothing", "shoes", "sports", "jewelry", "electronics", "pet supplies", "car accessories",
+];
+const PRODUCT_PREVIEW_ZONES = 7;
 
 function shuffleItems<T>(items: T[]): T[] {
   const shuffled = [...items];
@@ -40,6 +64,63 @@ function shuffleItems<T>(items: T[]): T[] {
     [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
   }
   return shuffled;
+}
+
+async function loadHomeRecommendationPage(keywords: string[], pageIndex: number): Promise<ApiProduct[]> {
+  const results = await Promise.allSettled(keywords.map((keyWord) =>
+    api.aliexpress.dropshippingProducts({
+      keyWord,
+      pageIndex,
+      pageSize: 20,
+      currency: "UZS",
+    }),
+  ));
+  const successful = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+  if (!successful.length) {
+    const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    throw failure?.reason ?? new Error("No product discovery queries succeeded");
+  }
+  if (successful.length < results.length) {
+    console.warn("Some URIONA product discovery queries failed", results.length - successful.length);
+  }
+  return successful.flatMap((payload) => mapMarketplaceGoods(payload, "UZS"));
+}
+
+function CategoryIllustration({ category, index }: { category: ApiCategory; index: number }) {
+  const name = `${category.nameRu} ${category.nameUz}`.toLocaleLowerCase();
+  const Icon = /phone|mobile|электрон|telefon|компьютер|computer|digital|телефон|смартфон/.test(name)
+    ? Smartphone
+    : /cloth|fashion|одеж|обув|мода|kiyim|fashion|bag|сумк/.test(name)
+      ? Shirt
+      : /home|house|дом|мебел|кухн|uy|sofa|furniture/.test(name)
+        ? /кухн|kitchen|oshxona/.test(name) ? Utensils : /sofa|мебел|furniture/.test(name) ? Sofa : House
+        : /watch|час|аксессуар|soat/.test(name)
+          ? Watch
+          : /beauty|health|красот|здоров|parvarish|go‘zallik/.test(name)
+            ? Sparkles
+            : /baby|kid|дет|ребен|болалар|игрушк|toy/.test(name)
+              ? Baby
+              : /sport|fitness|спорт|фитнес/.test(name)
+                ? Dumbbell
+                : /car|auto|авто|автомоб|машин|avto/.test(name)
+                  ? CarFront
+                  : /camera|photo|фото|камера/.test(name)
+                    ? Camera
+                    : /audio|headphone|науш|звук/.test(name)
+                      ? Headphones
+                      : /pet|animal|живот|питом|hayvon/.test(name)
+                        ? PawPrint
+                        : /book|книг|образован|учеб/.test(name)
+                          ? BookOpen
+                          : Package;
+
+  return (
+    <span className={`category-illustration category-illustration-${index % 6}`}>
+      {category.imageUrl
+        ? <img src={category.imageUrl} alt="" loading="lazy" />
+        : <Icon aria-hidden="true" size={24} strokeWidth={1.8} />}
+    </span>
+  );
 }
 
 const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object.assign({}, {
@@ -144,6 +225,43 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   "Добавить": { en: "Add", uz: "Qo‘shish" },
   "Купить": { en: "Buy", uz: "Sotib olish" },
   "Подробнее": { en: "Details", uz: "Batafsil" },
+  "Вид сетки товаров": { en: "Product grid view", uz: "Mahsulotlar panjarasi" },
+  "Сетка из 2 столбцов": { en: "2-column product grid", uz: "2 ustunli mahsulotlar" },
+  "Сетка из 3 столбцов": { en: "3-column product grid", uz: "3 ustunli mahsulotlar" },
+  "Сетка из 4 столбцов": { en: "4-column product grid", uz: "4 ustunli mahsulotlar" },
+  "Не удалось загрузить ещё товары. Нажмите, чтобы повторить.": {
+    en: "Couldn't load more products. Tap to retry.",
+    uz: "Ko‘proq mahsulot yuklanmadi. Qayta urinish uchun bosing.",
+  },
+  "Загружаем ещё товары…": { en: "Loading more products…", uz: "Ko‘proq mahsulot yuklanmoqda…" },
+  "Прокрутите вниз — загрузим следующие товары.": {
+    en: "Keep scrolling to load more products.",
+    uz: "Keyingi mahsulotlarni yuklash uchun pastga aylantiring.",
+  },
+  "Категории по запросу": { en: "Matching categories", uz: "Mos kategoriyalar" },
+  "Поиск по фото": { en: "Search by image", uz: "Rasm orqali qidirish" },
+  "Загрузить фото или вставить из буфера": { en: "Upload a photo or paste it from clipboard", uz: "Rasm yuklang yoki buferdan joylang" },
+  "Выбрать изображение": { en: "Choose image", uz: "Rasmni tanlang" },
+  "Ищем похожие товары…": { en: "Searching for similar products…", uz: "O‘xshash mahsulotlar qidirilmoqda…" },
+  "Результаты поиска по фото": { en: "Image search results", uz: "Rasm orqali qidiruv natijalari" },
+  "По фото ничего не найдено": { en: "No AliExpress matches were found for this image.", uz: "Bu rasm bo‘yicha AliExpress mahsulotlari topilmadi." },
+  "Не удалось выполнить поиск по фото": { en: "Image search could not be completed.", uz: "Rasm orqali qidiruvni bajarib bo‘lmadi." },
+  "Выберите JPG, PNG, WebP, GIF или AVIF размером до 8 МБ.": {
+    en: "Choose a JPG, PNG, WebP, GIF, or AVIF image up to 8 MB.",
+    uz: "8 MB gacha JPG, PNG, WebP, GIF yoki AVIF rasm tanlang.",
+  },
+  "Фото будет отправлено SerpApi и Google Lens для поиска.": {
+    en: "The image will be sent to SerpApi and Google Lens to perform the search.",
+    uz: "Qidiruv uchun rasm SerpApi va Google Lens xizmatlariga yuboriladi.",
+  },
+  "Удалить фото": { en: "Remove image", uz: "Rasmni olib tashlash" },
+  "Открыть товар": { en: "Open product", uz: "Mahsulotni ochish" },
+  "Нет товаров для загрузки сведений о продавцах.": { en: "No products are available to load seller details.", uz: "Sotuvchi ma’lumotlarini yuklash uchun mahsulotlar yo‘q." },
+  "Нет изображения": { en: "No image", uz: "Rasm yo‘q" },
+  "Начните вводить от 3 символов": { en: "Type at least 3 characters", uz: "Kamida 3 ta belgi kiriting" },
+  "Подходящие товары": { en: "Matching products", uz: "Mos mahsulotlar" },
+  "Популярные товары": { en: "Popular products", uz: "Ommabop mahsulotlar" },
+  "По запросу ничего не найдено": { en: "No exact matches found", uz: "So‘rov bo‘yicha mos mahsulot topilmadi" },
   "Удалить из избранного": { en: "Remove from wishlist", uz: "Saralanganlardan olib tashlash" },
   "Добавить в избранное": { en: "Add to wishlist", uz: "Saralanganlarga qo‘shish" },
   "Показать товары": { en: "View products", uz: "Mahsulotlarni ko‘rish" },
@@ -199,12 +317,79 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   "Нижняя навигация": { en: "Bottom navigation", uz: "Quyi navigatsiya" },
   "Закрыть": { en: "Close", uz: "Yopish" },
   "Товар": { en: "Product", uz: "Mahsulot" },
-  "Загружаем описание товара…": { en: "Loading product description…", uz: "Mahsulot tavsifi yuklanmoqda…" },
-  "Описание не предоставлено API.": { en: "No description was provided by the API.", uz: "API mahsulot tavsifini taqdim etmadi." },
   "Загружаем сведения о товаре…": { en: "Loading product details…", uz: "Mahsulot tafsilotlari yuklanmoqda…" },
+  "Выбор URIONA": { en: "URIONA picks", uz: "URIONA tanlovi" },
+  "Лучшие предложения каждый день": { en: "Great finds every day", uz: "Har kuni ajoyib takliflar" },
+  "Найдите что-то особенное для себя": { en: "Find something special for you", uz: "O‘zingiz uchun alohida mahsulot toping" },
+  "Смотреть подборку": { en: "Explore this selection", uz: "Tanlovni ko‘rish" },
+  "Предыдущий баннер": { en: "Previous banner", uz: "Oldingi banner" },
+  "Следующий баннер": { en: "Next banner", uz: "Keyingi banner" },
+  "Баннеры": { en: "Banners", uz: "Bannerlar" },
+  "Баннер": { en: "Banner", uz: "Banner" },
+  "Популярные категории": { en: "Popular categories", uz: "Mashhur kategoriyalar" },
+  "Выберите направление": { en: "Explore the catalog", uz: "Katalogni ko‘rib chiqing" },
+  "Ваш URIONA": { en: "Your URIONA", uz: "Sizning URIONA" },
+  "Найдите своё среди тысяч товаров": { en: "Find your next favorite", uz: "Minglab mahsulotlar ichidan o‘zingizga yoqqanini toping" },
+  "Категории, подборки и товары со всего мира — в одном месте.": { en: "Categories, curated picks, and products from around the world — all in one place.", uz: "Kategoriyalar, tanlovlar va dunyo mahsulotlari — barchasi bir joyda." },
+  "Конфиденциальность": { en: "Privacy policy", uz: "Maxfiylik siyosati" },
+  "Обработка персональных данных": { en: "Personal data processing", uz: "Shaxsiy ma’lumotlarga ishlov berish" },
+  "Пользовательское соглашение": { en: "Terms of use", uz: "Foydalanish shartlari" },
+  "Документ готовится к публикации": { en: "This document is being prepared", uz: "Ushbu hujjat tayyorlanmoqda" },
+  "О нас": { en: "About us", uz: "Biz haqimizda" },
+  "Покупателям": { en: "For customers", uz: "Foydalanuvchilarga" },
+  "Продавцам": { en: "For sellers", uz: "Tadbirkorlarga" },
+  "О URIONA": { en: "About URIONA", uz: "URIONA haqida" },
+  "Пункты выдачи": { en: "Pick-up points", uz: "Topshirish punktlari" },
+  "Вакансии": { en: "Careers", uz: "Vakansiyalar" },
+  "Связаться с нами": { en: "Contact us", uz: "Biz bilan bog‘lanish" },
+  "Частые вопросы": { en: "FAQ", uz: "Savol-javob" },
+  "Открыть пункт выдачи": { en: "Open a pick-up point", uz: "Topshirish punkti ochish" },
+  "Кабинет продавца": { en: "Seller dashboard", uz: "Sotuvchi kabinetiga kirish" },
+  "Стать продавцом URIONA": { en: "Sell with URIONA", uz: "URIONA’da soting" },
+  "Информация появится позже": { en: "More information will be available soon", uz: "Batafsil ma’lumot tez orada paydo bo‘ladi" },
+  "Магазины продавцов": { en: "Seller stores", uz: "Sotuvchilar do‘konlari" },
+  "Информация для продавцов": { en: "Seller information", uz: "Sotuvchilar uchun ma’lumot" },
+  "О продавцах": { en: "About sellers", uz: "Sotuvchilar haqida" },
+  "Загрузить данные продавцов": { en: "Load seller information", uz: "Sotuvchilar ma’lumotlarini yuklash" },
+  "Загрузить ещё данные из каталога": { en: "Load more seller data from catalog", uz: "Katalogdan yana ma’lumot yuklash" },
+  "Данные продавцов загружены": { en: "Seller information loaded", uz: "Sotuvchilar ma’lumotlari yuklandi" },
+  "Ошибок загрузки": { en: "Load errors", uz: "Yuklash xatolari" },
+  "Не удалось загрузить сведения о продавцах. Попробуйте ещё раз.": {
+    en: "Could not load seller details. Please try again.",
+    uz: "Sotuvchilar ma’lumotlarini yuklab bo‘lmadi. Qayta urinib ko‘ring.",
+  },
+  "Информация для продавцов скоро появится": {
+    en: "Seller information will be available soon",
+    uz: "Sotuvchilar uchun ma’lumot tez orada paydo bo‘ladi",
+  },
+  "Все магазины": { en: "All stores", uz: "Barcha do‘konlar" },
+  "товаров": { en: "products", uz: "mahsulot" },
+  "продавцов": { en: "sellers", uz: "sotuvchi" },
+  "Ошибка загрузки продавцов": { en: "Could not load sellers", uz: "Sotuvchilarni yuklab bo‘lmadi" },
+  "Данные магазина": { en: "Store information", uz: "Do‘kon ma’lumotlari" },
+  "Страна продавца": { en: "Seller country", uz: "Sotuvchi mamlakati" },
+  "Рейтинг продавца": { en: "Seller rating", uz: "Sotuvchi reytingi" },
+  "Положительные отзывы": { en: "Positive feedback", uz: "Ijobiy fikrlar" },
+  "Подписчики": { en: "Followers", uz: "Obunachilar" },
+  "Товары из просмотренного каталога": { en: "Products found in the loaded catalog", uz: "Yuklangan katalogdagi mahsulotlar" },
+  "Витрина продавца": { en: "Seller storefront", uz: "Sotuvchi vitrinası" },
+  "Загружаем сведения о продавцах…": { en: "Loading seller information…", uz: "Sotuvchilar ma’lumotlari yuklanmoqda…" },
+  "Продавцы появятся после загрузки сведений из товаров.": {
+    en: "Seller profiles will appear after loading details from products.",
+    uz: "Mahsulotlardan ma’lumot yuklangach, sotuvchilar profillari ko‘rinadi.",
+  },
+  "Полный список товаров продавца пока недоступен через подключённый API.": {
+    en: "The connected API does not currently provide the seller's complete product listing.",
+    uz: "Ulangan API hozircha sotuvchining barcha mahsulotlari ro‘yxatini bermaydi.",
+  },
+  "В этом магазине пока нет других загруженных товаров.": {
+    en: "No other products from this store have been loaded yet.",
+    uz: "Bu do‘kondan boshqa mahsulotlar hali yuklanmagan.",
+  },
   "Статус": { en: "Status", uz: "Holat" },
   "ID категории": { en: "Category ID", uz: "Kategoriya ID raqami" },
   "Магазин": { en: "Store", uz: "Do‘kon" },
+  "Магазины": { en: "Stores", uz: "Do‘konlar" },
   "Вес брутто": { en: "Gross weight", uz: "Brutto vazni" },
   "Размер упаковки": { en: "Package dimensions", uz: "Qadoq o‘lchamlari" },
   "Срок отправки": { en: "Shipping time", uz: "Jo‘natish muddati" },
@@ -399,6 +584,23 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   "Товар удалён из избранного": { en: "Product removed from wishlist", uz: "Mahsulot saralanganlardan olib tashlandi" },
   "Товар добавлен в избранное": { en: "Product added to wishlist", uz: "Mahsulot saralanganlarga qo‘shildi" },
   "Товар добавлен в корзину": { en: "Product added to cart", uz: "Mahsulot savatga qo‘shildi" },
+  "Добавить в избранное": { en: "Add to wishlist", uz: "Saralanganlarga qo‘shish" },
+  "Удалить из избранного": { en: "Remove from wishlist", uz: "Saralanganlardan olib tashlash" },
+  "Поделиться": { en: "Share", uz: "Ulashish" },
+  "Купить сейчас": { en: "Buy now", uz: "Hozir xarid qilish" },
+  "Похожие товары": { en: "Similar items", uz: "O‘xshash mahsulotlar" },
+  "Товары магазина": { en: "More from this store", uz: "Bu do‘kondagi mahsulotlar" },
+  "Ссылка на товар скопирована": { en: "Product link copied", uz: "Mahsulot havolasi nusxalandi" },
+  "Не удалось поделиться товаром": { en: "Could not share this product", uz: "Mahsulotni ulashib bo‘lmadi" },
+  "Посмотреть магазин": { en: "Visit store", uz: "Do‘konga o‘tish" },
+  "Загружаем похожие товары…": { en: "Loading similar items…", uz: "O‘xshash mahsulotlar yuklanmoqda…" },
+  "Этот вариант сейчас недоступен": { en: "This option is currently unavailable", uz: "Bu variant hozir mavjud emas" },
+  "Выберите вариант": { en: "Choose an option", uz: "Variantni tanlang" },
+  "Добавить в корзину": { en: "Add to cart", uz: "Savatga qo‘shish" },
+  "В наличии": { en: "In stock", uz: "Mavjud" },
+  "Фотографии товара": { en: "Product photos", uz: "Mahsulot rasmlari" },
+  "Фото": { en: "Photo", uz: "Rasm" },
+  "покупок": { en: "purchases", uz: "xarid" },
   "Промокод не найден": { en: "Promo code not found", uz: "Promo-kod topilmadi" },
   "Введите промокод": { en: "Enter a promo code", uz: "Promo-kodni kiriting" },
   "Промокод SAVE10 применён": { en: "Promo code SAVE10 applied", uz: "SAVE10 promo-kodi qo‘llandi" },
@@ -596,7 +798,7 @@ const translations = {
     search: "Ищите товары и бренды", profileOpen: "Профиль открыт", cartOpen: "Корзина открыта", start: "Начать покупки",
     heroTitle: "Мировые товары", heroAccent: "по честной цене", heroText: "Выбираем товары у проверенных продавцов и доставляем их в Узбекистан.",
     safe: "Безопасная оплата", deliveryUz: "Доставка в Узбекистан", categoriesQuick: "Быстрый выбор", allCategories: "Все категории",
-    best: "Лучшие предложения", popular: "Популярные товары", forYou: "Случайная подборка для вас",
+    best: "Лучшие предложения", popular: "Популярные товары", forYou: "Лучшие подборки для вас",
     searchResults: (query: string) => `Товары по запросу «${query}»`, seeAll: "Смотреть всё", payments: "Платежи", shipping: "Доставка",
     catalogPdd: "Категория", all: "Все категории", tags: "Все теги", goods: "Товары", allGoods: "Все товары",
     add: "Добавить", buy: "Купить", details: "Подробнее", loading: "Загружаем товары...", noGoods: "Товары не найдены.",
@@ -620,7 +822,7 @@ const translations = {
     search: "Search products and brands", profileOpen: "Profile opened", cartOpen: "Cart opened", start: "Start shopping",
     heroTitle: "Global products", heroAccent: "at a fair price", heroText: "We select products from trusted sellers and deliver them to Uzbekistan.",
     safe: "Secure payment", deliveryUz: "Delivery to Uzbekistan", categoriesQuick: "Quick pick", allCategories: "All categories",
-    best: "Best offers", popular: "Popular products", forYou: "A random selection for you",
+    best: "Best offers", popular: "Popular products", forYou: "Best picks for you",
     searchResults: (query: string) => `Products for “${query}”`, seeAll: "View all", payments: "Payments", shipping: "Delivery",
     catalogPdd: "Category", all: "All categories", tags: "All tags", goods: "Products", allGoods: "All products",
     add: "Add", buy: "Buy", details: "Details", loading: "Loading products...", noGoods: "No products found.",
@@ -644,7 +846,7 @@ const translations = {
     search: "Mahsulot va brendlarni qidiring", profileOpen: "Profil ochildi", cartOpen: "Savat ochildi", start: "Xaridni boshlash",
     heroTitle: "Dunyo mahsulotlari", heroAccent: "halol narxda", heroText: "Ishonchli sotuvchilardan mahsulotlarni tanlaymiz va O‘zbekistonga yetkazamiz.",
     safe: "Xavfsiz to‘lov", deliveryUz: "O‘zbekistonga yetkazib berish", categoriesQuick: "Tezkor tanlov", allCategories: "Barcha kategoriyalar",
-    best: "Eng yaxshi takliflar", popular: "Mashhur mahsulotlar", forYou: "Siz uchun tasodifiy tanlov",
+    best: "Eng yaxshi takliflar", popular: "Mashhur mahsulotlar", forYou: "Siz uchun eng yaxshi to‘plamlar",
     searchResults: (query: string) => `“${query}” so‘rovi bo‘yicha mahsulotlar`, seeAll: "Barchasini ko‘rish", payments: "To‘lovlar", shipping: "Yetkazib berish",
     catalogPdd: "Kategoriya", all: "Barcha kategoriyalar", tags: "Barcha teglar", goods: "Mahsulotlar", allGoods: "Barcha mahsulotlar",
     add: "Qo‘shish", buy: "Sotib olish", details: "Batafsil", loading: "Mahsulotlar yuklanmoqda...", noGoods: "Mahsulotlar topilmadi.",
@@ -666,6 +868,7 @@ const translations = {
 type View =
   | (typeof navItems)[number]
   | "Каталог"
+  | "Магазины"
   | "Скидки"
   | "Как заказать"
   | "Доставка"
@@ -677,6 +880,7 @@ const LogoMark = ({ className = "" }: { className?: string }) => (
 
 const topMenuItems = [
   { label: "Каталог", view: "Каталог" as View, message: "Каталог открыт" },
+  { label: "Магазины", view: "Магазины" as View, message: "Магазины продавцов" },
   { label: "Скидки", view: "Скидки" as View, message: "Акции и скидки" },
   { label: "Как заказать", view: "Как заказать" as View, message: "Как заказать" },
   { label: "Доставка", view: "Доставка" as View, message: "Доставка по Узбекистану" },
@@ -686,6 +890,7 @@ const topMenuItems = [
 const CART_STORAGE_KEY = "uriona-cart";
 const PRODUCTS_STORAGE_KEY = "uriona-cart-products";
 const LIKED_STORAGE_KEY = "uriona-liked-products";
+const SELLERS_STORAGE_KEY = "uriona-seller-profiles";
 const MIN_PROMO_SUBTOTAL = 500_000 * 100;
 type ProfileSection = "overview" | "orders" | "wishlist" | "stores" | "reviews" | "questions" | "coupons" | "addresses" | "payments" | "settings" | "support";
 
@@ -770,9 +975,55 @@ function readStoredProducts(): ApiProduct[] {
   return Array.isArray(stored) ? stored.filter(isApiProduct).slice(-100) : [];
 }
 
+type SellerProfile = {
+  id: string;
+  name: string;
+  logoUrl?: string;
+  country?: string;
+  rating?: string;
+  positiveRate?: string;
+  followers?: string;
+  description?: string;
+  updatedAt: string;
+};
+
+function isSellerProfile(value: unknown): value is SellerProfile {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const seller = value as Record<string, unknown>;
+  return typeof seller.id === "string" && typeof seller.name === "string" && typeof seller.updatedAt === "string";
+}
+
+function readStoredSellers(): SellerProfile[] {
+  const stored = readStoredValue(SELLERS_STORAGE_KEY);
+  return Array.isArray(stored) ? stored.filter(isSellerProfile).slice(-100) : [];
+}
+
 function readStoredLiked(): string[] {
   const stored = readStoredValue(LIKED_STORAGE_KEY);
   return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === "string") : [];
+}
+
+function sellerIdentity(id: string, name: string): string {
+  return id.trim() || (name.trim() ? `name:${name.trim().toLocaleLowerCase()}` : "");
+}
+
+function mergeSellerProfiles(current: SellerProfile[], incoming: SellerProfile[]): SellerProfile[] {
+  const merged = new Map(current.map((seller) => [seller.id, seller]));
+  for (const seller of incoming) {
+    if (!seller.id || !seller.name) continue;
+    const previous = merged.get(seller.id);
+    merged.set(seller.id, {
+      ...previous,
+      ...seller,
+      logoUrl: seller.logoUrl || previous?.logoUrl,
+      country: seller.country || previous?.country,
+      rating: seller.rating || previous?.rating,
+      positiveRate: seller.positiveRate || previous?.positiveRate,
+      followers: seller.followers || previous?.followers,
+      description: seller.description || previous?.description,
+    });
+  }
+  return Array.from(merged.values()).slice(-100);
 }
 
 type AliExpressProductDetails = {
@@ -783,7 +1034,16 @@ type AliExpressProductDetails = {
   images: string[];
   videos: string[];
   storeName: string;
+  storeId: string;
+  storeLogoUrl: string;
+  storeCountry: string;
+  storeRating: string;
+  storePositiveRate: string;
+  storeFollowers: string;
+  storeDescription: string;
   skus: Record<string, unknown>[];
+  rating: string;
+  orders: string;
   grossWeight: string;
   dimensions: string;
   deliveryTime: string;
@@ -811,6 +1071,12 @@ function readRecords(value: unknown): Record<string, unknown>[] {
   return Array.isArray(nestedList) ? nestedList.map(readRecord).filter((item) => Object.keys(item).length > 0) : [record];
 }
 
+function skuIsAvailable(sku: Record<string, unknown>): boolean {
+  const stock = readString(sku, "sku_available_stock");
+  const quantity = Number(stock);
+  return !stock || !Number.isFinite(quantity) || quantity > 0;
+}
+
 function parseAliExpressProductDetails(payload: unknown): AliExpressProductDetails {
   const root = readRecord(payload);
   const response = readRecord(root.aliexpress_ds_product_get_response ?? root);
@@ -825,16 +1091,29 @@ function parseAliExpressProductDetails(payload: unknown): AliExpressProductDetai
     .map((video) => readString(video, "media_url", "video_url", "url"))
     .filter(Boolean);
   const skus = readRecords(result.ae_item_sku_info_dtos);
+  const detailHtml = readString(base, "detail", "mobile_detail");
+  const description = typeof DOMParser === "undefined"
+    ? detailHtml.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+    : new DOMParser().parseFromString(detailHtml, "text/html").body.textContent?.replace(/\s+/g, " ").trim() ?? "";
 
   return {
     subject: readString(base, "subject"),
-    description: readString(base, "detail", "mobile_detail").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
+    description,
     status: readString(base, "product_status_type"),
     categoryId: readString(base, "category_id"),
-    images: rawImages,
+    images: Array.from(new Set(rawImages.map((image) => marketplaceImageUrl(image)).filter((image): image is string => Boolean(image)))),
     videos,
-    storeName: readString(store, "store_name", "shop_name", "ae_store_name", "store_id"),
+    storeName: readString(store, "store_name", "shop_name", "ae_store_name"),
+    storeId: readString(store, "store_id", "shop_id", "seller_id"),
+    storeLogoUrl: marketplaceImageUrl(readString(store, "store_logo", "shop_logo", "logo_url") || null) || "",
+    storeCountry: readString(store, "store_country", "country", "country_name"),
+    storeRating: readString(store, "store_rating", "seller_rating", "evaluation_rating", "avg_evaluation_rating"),
+    storePositiveRate: readString(store, "positive_feedback_rate", "positive_rate", "positive_feedback"),
+    storeFollowers: readString(store, "followers", "follower_count", "follow_count"),
+    storeDescription: readString(store, "store_description", "description", "shop_description"),
     skus,
+    rating: readString(base, "avg_evaluation_rating"),
+    orders: readString(base, "sales_count"),
     grossWeight: readString(packageInfo, "gross_weight"),
     dimensions: ["package_length", "package_width", "package_height"].map((key) => readString(packageInfo, key)).every(Boolean)
       ? `${readString(packageInfo, "package_length")} × ${readString(packageInfo, "package_width")} × ${readString(packageInfo, "package_height")}`
@@ -857,13 +1136,37 @@ export function App() {
     ? product.descriptionUz || product.descriptionRu
     : product.descriptionRu || product.descriptionUz;
   const [view, setView] = useState<View>("Главная");
+  const [productGridColumns, setProductGridColumns] = useState<2 | 3 | 4>(() => {
+    const stored = localStorage.getItem("uriona-product-grid-columns");
+    if (stored === "2" || stored === "3" || stored === "4") return Number(stored) as 2 | 3 | 4;
+    return window.innerWidth <= 620 ? 2 : 4;
+  });
   const [search, setSearch] = useState("");
-  const [recommendationKeyword] = useState(() => HOME_RECOMMENDATION_KEYWORDS[Math.floor(Math.random() * HOME_RECOMMENDATION_KEYWORDS.length)]);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [imageSearchFile, setImageSearchFile] = useState<File | null>(null);
+  const [imageSearchPreview, setImageSearchPreview] = useState("");
+  const [imageSearchResults, setImageSearchResults] = useState<ImageSearchMatch[]>([]);
+  const [imageSearchLoading, setImageSearchLoading] = useState(false);
+  const [imageSearchError, setImageSearchError] = useState("");
+  const imageSearchInputRef = useRef<HTMLInputElement>(null);
+  const imageSearchPreviewRef = useRef("");
+  const imageSearchRequestRef = useRef(0);
+  const [recommendationKeywords] = useState(() => shuffleItems(HOME_RECOMMENDATION_KEYWORDS).slice(0, 6));
+  const [heroSlideIndex, setHeroSlideIndex] = useState(0);
+  const heroPointerStart = useRef<number | null>(null);
   const [selectedCat, setSelectedCat] = useState<string>("all");
   const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [categoryParentId, setCategoryParentId] = useState<string | null>(null);
   const [categorySearch, setCategorySearch] = useState("");
   const [products, setProducts] = useState<ApiProduct[]>([]);
+  const [catalogHasMore, setCatalogHasMore] = useState(false);
+  const [catalogLoadingMore, setCatalogLoadingMore] = useState(false);
+  const [catalogMoreError, setCatalogMoreError] = useState("");
+  const [catalogMoreRetry, setCatalogMoreRetry] = useState(0);
+  const [catalogPaginationTick, setCatalogPaginationTick] = useState(0);
+  const catalogPageRef = useRef(1);
+  const catalogLoadLockRef = useRef<object | null>(null);
+  const catalogLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const [liveCatalog, setLiveCatalog] = useState(false);
   const [catalogSource, setCatalogSource] = useState<"loading" | "aliexpress" | "local" | "unavailable">("loading");
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -874,6 +1177,15 @@ export function App() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [detailAttempt, setDetailAttempt] = useState(0);
+  const [selectedDetailImage, setSelectedDetailImage] = useState(0);
+  const [selectedSkuProperties, setSelectedSkuProperties] = useState<Record<string, string>>({});
+  const [relatedProducts, setRelatedProducts] = useState<ApiProduct[]>([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
+  const [relatedError, setRelatedError] = useState("");
+  const [hoveredProductId, setHoveredProductId] = useState<string | null>(null);
+  const [hoverProductImages, setHoverProductImages] = useState<Record<string, string[]>>({});
+  const [hoverImageIndexes, setHoverImageIndexes] = useState<Record<string, number>>({});
+  const hoverPointerPositions = useRef<Record<string, number>>({});
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesError, setCategoriesError] = useState("");
   const [liked, setLiked] = useState<string[]>(readStoredLiked);
@@ -884,6 +1196,14 @@ export function App() {
   const [authToken, setAuthToken] = useState(() => localStorage.getItem("uriona-access-token") || "");
   const [profile, setProfile] = useState<ApiUser | null>(null);
   const [knownProducts, setKnownProducts] = useState<ApiProduct[]>(readStoredProducts);
+  const [sellerProfiles, setSellerProfiles] = useState<SellerProfile[]>(readStoredSellers);
+  const [selectedSellerId, setSelectedSellerId] = useState("");
+  const [sellerFetchLoading, setSellerFetchLoading] = useState(false);
+  const [sellerFetchError, setSellerFetchError] = useState("");
+  const sellerFetchAttempted = useRef(new Set<string>());
+  const hoverImageCache = useRef(new Map<string, string[]>());
+  const sharedProductId = useRef(new URLSearchParams(window.location.search).get("product"));
+  const sharedProductHandled = useRef(false);
   const [profileForm, setProfileForm] = useState({ name: "", email: "", phone: "", city: "", address: "" });
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -901,6 +1221,76 @@ export function App() {
     () => detailPayload === null ? null : parseAliExpressProductDetails(detailPayload),
     [detailPayload],
   );
+  useEffect(() => {
+    if (!detailProduct || !productDetails) return;
+    const enrichedProduct: ApiProduct = {
+      ...detailProduct,
+      categoryId: productDetails.categoryId || detailProduct.categoryId,
+      titleRu: productDetails.subject || detailProduct.titleRu,
+      titleUz: productDetails.subject || detailProduct.titleUz,
+      descriptionRu: productDetails.description || detailProduct.descriptionRu,
+      descriptionUz: productDetails.description || detailProduct.descriptionUz,
+      imageUrl: productDetails.images[0] || detailProduct.imageUrl,
+      rating: productDetails.rating || detailProduct.rating,
+      orders: productDetails.orders || detailProduct.orders,
+      sellerId: sellerIdentity(productDetails.storeId, productDetails.storeName) || detailProduct.sellerId,
+      sellerName: productDetails.storeName || detailProduct.sellerName,
+      sellerLogoUrl: productDetails.storeLogoUrl || detailProduct.sellerLogoUrl,
+      sellerCountry: productDetails.storeCountry || detailProduct.sellerCountry,
+      sellerRating: productDetails.storeRating || detailProduct.sellerRating,
+      sellerPositiveRate: productDetails.storePositiveRate || detailProduct.sellerPositiveRate,
+      sellerFollowers: productDetails.storeFollowers || detailProduct.sellerFollowers,
+      sellerDescription: productDetails.storeDescription || detailProduct.sellerDescription,
+      category: categories.find((category) => category.id === productDetails.categoryId) ?? detailProduct.category,
+    };
+    setKnownProducts((current) => Array.from(
+      new Map([...current, enrichedProduct].map((product) => [product.id, product])).values(),
+    ).slice(-100));
+    const sellerId = sellerIdentity(productDetails.storeId, productDetails.storeName);
+    if (sellerId && productDetails.storeName) {
+      setSellerProfiles((current) => mergeSellerProfiles(current, [{
+        id: sellerId,
+        name: productDetails.storeName,
+        logoUrl: productDetails.storeLogoUrl || undefined,
+        country: productDetails.storeCountry || undefined,
+        rating: productDetails.storeRating || undefined,
+        positiveRate: productDetails.storePositiveRate || undefined,
+        followers: productDetails.storeFollowers || undefined,
+        description: productDetails.storeDescription || undefined,
+        updatedAt: new Date().toISOString(),
+      }]));
+    }
+  }, [detailProduct, productDetails, categories]);
+  const detailSkuGroups = useMemo(() => {
+    if (!productDetails) return [];
+    const groups = new Map<string, { name: string; values: string[] }>();
+    for (const sku of productDetails.skus) {
+      for (const property of readRecords(sku.ae_sku_property_dtos)) {
+        const id = readString(property, "sku_property_id", "property_name", "sku_property_name");
+        const name = readString(property, "sku_property_name", "property_name", "prop_name") || id;
+        const value = readString(property, "sku_property_value", "property_value", "prop_value");
+        if (!id || !value) continue;
+        const group = groups.get(id) ?? { name, values: [] };
+        if (!group.values.includes(value)) group.values.push(value);
+        groups.set(id, group);
+      }
+    }
+    return Array.from(groups, ([id, group]) => ({ id, ...group }));
+  }, [productDetails]);
+  const selectedDetailSku = useMemo(() => {
+    if (!productDetails) return null;
+    if (!detailSkuGroups.length) return productDetails.skus.find(skuIsAvailable) ?? null;
+    if (detailSkuGroups.some((group) => !selectedSkuProperties[group.id])) return null;
+    return productDetails.skus.find((sku) => {
+      const skuProperties = readRecords(sku.ae_sku_property_dtos);
+      return detailSkuGroups.every((group) => {
+        const property = skuProperties.find((item) =>
+          readString(item, "sku_property_id", "property_name", "sku_property_name") === group.id
+        );
+        return property && readString(property, "sku_property_value", "property_value", "prop_value") === selectedSkuProperties[group.id];
+      });
+    }) ?? null;
+  }, [productDetails, detailSkuGroups, selectedSkuProperties]);
 
   const clearExpiredSession = (email?: string | null) => {
     localStorage.removeItem("uriona-access-token");
@@ -925,8 +1315,29 @@ export function App() {
   }, [knownProducts]);
 
   useEffect(() => {
+    localStorage.setItem(SELLERS_STORAGE_KEY, JSON.stringify(sellerProfiles.slice(-100)));
+  }, [sellerProfiles]);
+
+  useEffect(() => {
     localStorage.setItem(LIKED_STORAGE_KEY, JSON.stringify(liked));
   }, [liked]);
+
+  useEffect(() => {
+    const productId = sharedProductId.current;
+    if (sharedProductHandled.current || !productId || !/^\d+$/.test(productId)) return;
+    sharedProductHandled.current = true;
+    const cachedProduct = knownProducts.find((product) => product.id === productId)
+      ?? products.find((product) => product.id === productId);
+    setDetailProduct(cachedProduct ?? {
+      id: productId,
+      categoryId: null,
+      titleUz: "",
+      titleRu: "",
+      currency: "UZS",
+      priceMinor: 0,
+      status: "popular",
+    });
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("uriona-language", language);
@@ -1031,10 +1442,12 @@ export function App() {
     setDetailPayload(null);
     setDetailError("");
     setDetailLoading(true);
+    setSelectedDetailImage(0);
+    setSelectedSkuProperties({});
     api.aliexpress.productDetails(detailProduct.id, {
       ship_to_country: "UZ",
-      target_currency: "USD",
-      target_language: "ru_RU",
+      target_currency: "UZS",
+      target_language: language === "en" ? "en_US" : language === "uz" ? "uz_UZ" : "ru_RU",
     })
       .then((payload) => {
         if (active) setDetailPayload(payload);
@@ -1046,11 +1459,131 @@ export function App() {
         if (active) setDetailLoading(false);
       });
     return () => { active = false; };
-  }, [detailProduct, detailAttempt]);
+  }, [detailProduct, detailAttempt, language]);
+
+  useEffect(() => {
+    if (!detailProduct || !productDetails) {
+      setRelatedProducts([]);
+      setRelatedLoading(false);
+      setRelatedError("");
+      return;
+    }
+    const categoryId = productDetails.categoryId || detailProduct.categoryId || undefined;
+    const categoryName = categoryLabel(detailProduct.category) || "";
+    const relatedKeyword = prepareMarketplaceQuery(`${categoryName} ${productDetails.subject}`)
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 5)
+      .join(" ");
+    if (!relatedKeyword) {
+      setRelatedProducts([]);
+      setRelatedLoading(false);
+      setRelatedError("");
+      return;
+    }
+
+    let active = true;
+    setRelatedProducts([]);
+    setRelatedError("");
+    setRelatedLoading(true);
+    const fetchRelated = (keyWord: string, filterByCategory: boolean) =>
+      api.aliexpress.dropshippingProducts({
+        keyWord,
+        ...(filterByCategory && categoryId && /^\d+$/.test(categoryId) ? { categoryId } : {}),
+        pageIndex: 1,
+        pageSize: 20,
+        currency: "UZS",
+      }).then((payload) => mapMarketplaceGoods(payload, "UZS")
+        .filter((product) => product.id !== detailProduct.id)
+        .map((product) => ({
+          ...product,
+          category: categories.find((category) => category.id === product.categoryId) ?? detailProduct.category ?? null,
+        })));
+    const fallbackKeyword = prepareMarketplaceQuery(categoryName)
+      || prepareMarketplaceQuery(productDetails.subject).split(" ").slice(0, 3).join(" ");
+    const loadRelated = async () => {
+      try {
+        const primary = await fetchRelated(relatedKeyword, Boolean(categoryId));
+        if (primary.length || !fallbackKeyword || fallbackKeyword === relatedKeyword) return primary;
+      } catch (error) {
+        console.warn("Specific related-product search failed; trying the broader category search", error);
+      }
+      return fallbackKeyword && fallbackKeyword !== relatedKeyword
+        ? fetchRelated(fallbackKeyword, false)
+        : [];
+    };
+    loadRelated().then((items) => {
+      if (!active) return;
+      setRelatedProducts(items.slice(0, 8));
+    }).catch((error: unknown) => {
+      if (active) setRelatedError(aliExpressErrorMessage(error, language, "dropshipping"));
+    }).finally(() => {
+      if (active) setRelatedLoading(false);
+    });
+    return () => { active = false; };
+  }, [detailProduct, productDetails, categories, language]);
+
+  useEffect(() => {
+    if (!liveCatalog || !hoveredProductId || !/^\d+$/.test(hoveredProductId)) return;
+    let active = true;
+    const cachedImages = hoverImageCache.current.get(hoveredProductId);
+    if (cachedImages) {
+      setHoverProductImages((images) => ({ ...images, [hoveredProductId]: cachedImages }));
+      setHoverImageIndexes((indexes) => ({ ...indexes, [hoveredProductId]: 0 }));
+      return () => { active = false; };
+    }
+    api.aliexpress.productDetails(hoveredProductId, {
+      ship_to_country: "UZ",
+      target_currency: "UZS",
+      target_language: language === "en" ? "en_US" : language === "uz" ? "uz_UZ" : "ru_RU",
+    }).then((payload) => {
+      if (!active) return;
+      const images = parseAliExpressProductDetails(payload).images;
+      if (images.length < 2) return;
+      hoverImageCache.current.set(hoveredProductId, images);
+      setHoverProductImages((current) => ({ ...current, [hoveredProductId]: images }));
+      const pointerPosition = hoverPointerPositions.current[hoveredProductId] ?? 0;
+      const baseImage = products.find((product) => product.id === hoveredProductId)?.imageUrl
+        ?? knownProducts.find((product) => product.id === hoveredProductId)?.imageUrl;
+      const previewCount = Math.min(new Set([baseImage, ...images].filter(Boolean)).size, PRODUCT_PREVIEW_ZONES);
+      setHoverImageIndexes((current) => ({
+        ...current,
+        [hoveredProductId]: Math.min(Math.floor(pointerPosition * previewCount), previewCount - 1),
+      }));
+    }).catch((error: unknown) => {
+      if (active) console.error("Не удалось загрузить фотографии для предпросмотра товара", error);
+    });
+    return () => {
+      active = false;
+    };
+  }, [hoveredProductId, language, liveCatalog]);
+
+  useEffect(() => {
+    if (view !== "Главная" || products.length < 2) return;
+    const interval = window.setInterval(() => {
+      setHeroSlideIndex((index) => (index + 1) % Math.min(products.length, 5));
+    }, 5200);
+    return () => window.clearInterval(interval);
+  }, [view, products.length]);
+
+  const previousViewForSellers = useRef<View>(view);
+  useEffect(() => {
+    const previousView = previousViewForSellers.current;
+    previousViewForSellers.current = view;
+    if (view !== "Магазины" || previousView === "Магазины" || !products.length) return;
+    setKnownProducts((current) => Array.from(
+      new Map([...current, ...products].map((product) => [product.id, product])).values(),
+    ).slice(-100));
+  }, [view]);
 
   useEffect(() => {
     if ((view === "Категории" || view === "Каталог") && selectedCat === "all" && !search.trim()) {
       setProducts([]);
+      catalogPageRef.current = 1;
+      setCatalogHasMore(false);
+      setCatalogLoadingMore(false);
+      setCatalogMoreError("");
+      catalogLoadLockRef.current = null;
       setLiveCatalog(false);
       setCatalogLoading(false);
       setCatalogError("");
@@ -1059,15 +1592,32 @@ export function App() {
     }
 
     let active = true;
+    catalogPageRef.current = 1;
+    catalogLoadLockRef.current = null;
+    setProducts([]);
+    setCatalogHasMore(false);
+    setCatalogLoadingMore(false);
+    setCatalogMoreError("");
     setCatalogLoading(true);
     setCatalogError("");
     setCatalogSource("loading");
     const timer = window.setTimeout(() => {
       const searchTerm = search.trim();
+      if (searchTerm && !prepareMarketplaceQuery(searchTerm)) {
+        setProducts([]);
+        setCatalogHasMore(false);
+        setLiveCatalog(true);
+        setCatalogSource("aliexpress");
+        setCatalogLoading(false);
+        return;
+      }
       const isHomeRecommendations = view === "Главная" && selectedCat === "all" && !searchTerm;
       const useDropshippingSearch = selectedCat !== "all" || Boolean(searchTerm) || isHomeRecommendations;
       const selectedCategory = categories.find((category) => category.id === selectedCat);
       const categoryKeyword = selectedCat !== "all" ? categoryLabel(selectedCategory)?.trim() : "";
+      const marketplaceCategoryId = selectedCat !== "all"
+        ? selectedCat
+        : inferMarketplaceCategoryId(searchTerm, categories);
       const filters = {
         ...(searchTerm ? { keywords: searchTerm } : {}),
         ...(selectedCat !== "all" ? { category_ids: selectedCat } : {}),
@@ -1090,6 +1640,8 @@ export function App() {
             category: product.category ?? categories.find((category) => category.id === product.categoryId) ?? null,
           }));
           setProducts(localProducts);
+          catalogPageRef.current = 1;
+          setCatalogHasMore(localResult.page < localResult.pages);
           setLiveCatalog(false);
           setCatalogSource(localProducts.length ? "local" : "unavailable");
           setCatalogError(localProducts.length
@@ -1103,33 +1655,38 @@ export function App() {
         } catch {
           if (!active) return;
           setProducts([]);
+          setCatalogHasMore(false);
           setLiveCatalog(false);
           setCatalogSource("unavailable");
           setCatalogError(text.localCatalogUnavailable);
         }
       };
       const load = useDropshippingSearch
-        ? api.aliexpress.dropshippingProducts({
-            keyWord: searchTerm || categoryKeyword || recommendationKeyword,
-            ...(selectedCat !== "all" ? { categoryId: selectedCat } : {}),
-            pageIndex: 1,
-            pageSize: 20,
-            ...(selectedCat !== "all" ? { sortBy: "orders,desc" } : {}),
-            currency: "UZS",
-          })
-        : api.aliexpress.hotProducts(filters);
-      load.then((payload) => {
+        ? isHomeRecommendations
+          ? loadHomeRecommendationPage(recommendationKeywords, 1)
+          : api.aliexpress.dropshippingProducts({
+              keyWord: prepareMarketplaceQuery(searchTerm) || categoryKeyword || recommendationKeywords[0],
+              ...(marketplaceCategoryId ? { categoryId: marketplaceCategoryId } : {}),
+              pageIndex: 1,
+              pageSize: 20,
+              ...(selectedCat !== "all" ? { sortBy: "orders,desc" } : {}),
+              currency: "UZS",
+            }).then((payload) => mapMarketplaceGoods(payload, "UZS"))
+        : api.aliexpress.hotProducts(filters).then((payload) => mapMarketplaceGoods(payload, "CNY"));
+      load.then((mappedProducts) => {
         if (!active) return;
-        const mappedProducts = mapMarketplaceGoods(payload, useDropshippingSearch ? "UZS" : "CNY").map((product) => ({
+        const categorizedProducts = mappedProducts.map((product) => ({
           ...product,
           category: categories.find((category) => category.id === product.categoryId)
             ?? categories.find((category) => category.id === selectedCat)
             ?? null,
         }));
-        const liveProducts = isHomeRecommendations ? shuffleItems(mappedProducts) : mappedProducts;
+        const uniqueMappedProducts = Array.from(new Map(categorizedProducts.map((product) => [product.id, product])).values());
+        const liveProducts = isHomeRecommendations ? shuffleItems(uniqueMappedProducts) : uniqueMappedProducts;
         if (!liveProducts.length) {
           if (useDropshippingSearch) {
             setProducts([]);
+            setCatalogHasMore(false);
             setLiveCatalog(true);
             setCatalogSource("aliexpress");
             setCatalogError("");
@@ -1138,6 +1695,8 @@ export function App() {
           return useLocalCatalog();
         }
         setProducts(liveProducts);
+        catalogPageRef.current = 1;
+        setCatalogHasMore(liveProducts.length >= 20);
         setLiveCatalog(true);
         setCatalogSource("aliexpress");
         setCatalogLoading(false);
@@ -1146,6 +1705,7 @@ export function App() {
         if (!active) return;
         if (useDropshippingSearch) {
           setProducts([]);
+          setCatalogHasMore(false);
           setLiveCatalog(true);
           setCatalogSource("unavailable");
           setCatalogError(aliExpressErrorMessage(error, language, "dropshipping"));
@@ -1160,29 +1720,186 @@ export function App() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [search, selectedCat, categories, language, catalogAttempt, recommendationKeyword, view]);
+  }, [search, selectedCat, categories, language, catalogAttempt, recommendationKeywords, view]);
+
+  useEffect(() => {
+    const isHomeRecommendations = view === "Главная" && selectedCat === "all" && !search.trim();
+    const canPaginate = isHomeRecommendations
+      || ((view === "Категории" || view === "Каталог") && (selectedCat !== "all" || Boolean(search.trim())));
+    const sentinel = catalogLoadMoreRef.current;
+    if (
+      !canPaginate
+      || !catalogHasMore
+      || catalogLoading
+      || catalogMoreError
+      || !products.length
+      || !sentinel
+    ) return;
+
+    let active = true;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting) || catalogLoadLockRef.current) return;
+
+      const requestLock = {};
+      catalogLoadLockRef.current = requestLock;
+      setCatalogLoadingMore(true);
+      const pageIndex = catalogPageRef.current + 1;
+      const searchTerm = search.trim();
+      const isHomeRecommendations = view === "Главная" && selectedCat === "all" && !searchTerm;
+      const selectedCategory = categories.find((category) => category.id === selectedCat);
+      const categoryKeyword = selectedCat !== "all" ? categoryLabel(selectedCategory)?.trim() : "";
+      const marketplaceCategoryId = selectedCat !== "all"
+        ? selectedCat
+        : inferMarketplaceCategoryId(searchTerm, categories);
+
+      const loadPage = catalogSource === "local"
+        ? api.products({
+            ...(searchTerm ? { search: searchTerm } : {}),
+            ...(selectedCat !== "all" ? { categoryId: selectedCat } : {}),
+            page: pageIndex,
+            limit: 20,
+          }).then((result) => ({
+            products: result.items.map((product) => ({
+              ...product,
+              status: "popular",
+              category: product.category ?? categories.find((category) => category.id === product.categoryId) ?? null,
+            })),
+            hasMore: result.page < result.pages,
+          }))
+        : isHomeRecommendations
+          ? loadHomeRecommendationPage(recommendationKeywords, pageIndex).then((products) => ({
+              products: products.map((product) => ({
+                ...product,
+                category: categories.find((category) => category.id === product.categoryId) ?? null,
+              })),
+              hasMore: products.length >= 20,
+            }))
+          : api.aliexpress.dropshippingProducts({
+            keyWord: prepareMarketplaceQuery(searchTerm) || categoryKeyword || recommendationKeywords[0],
+            ...(marketplaceCategoryId ? { categoryId: marketplaceCategoryId } : {}),
+            pageIndex,
+            pageSize: 20,
+            ...(selectedCat !== "all" ? { sortBy: "orders,desc" } : {}),
+            currency: "UZS",
+          }).then((payload) => {
+            const products = mapMarketplaceGoods(payload, "UZS").map((product) => ({
+              ...product,
+              category: categories.find((category) => category.id === product.categoryId)
+                ?? categories.find((category) => category.id === selectedCat)
+                ?? null,
+            }));
+            return { products, hasMore: products.length >= 20 };
+          });
+
+      loadPage
+        .then(({ products: pageProducts, hasMore }) => {
+          if (!active) return;
+          const existingIds = new Set(products.map((product) => product.id));
+          const newProducts = pageProducts.filter((product) => !existingIds.has(product.id));
+          catalogPageRef.current = pageIndex;
+          setProducts((current) => {
+            const currentIds = new Set(current.map((product) => product.id));
+            return [...current, ...newProducts.filter((product) => !currentIds.has(product.id))];
+          });
+          setCatalogHasMore(hasMore && newProducts.length > 0);
+          setCatalogMoreError("");
+          if (newProducts.length) {
+            setKnownProducts((current) => Array.from(new Map([...current, ...newProducts].map((product) => [product.id, product])).values()).slice(-100));
+          }
+        })
+        .catch(() => {
+          if (active) setCatalogMoreError(localizeText("Не удалось загрузить ещё товары. Нажмите, чтобы повторить.", language));
+        })
+        .finally(() => {
+          if (catalogLoadLockRef.current === requestLock) {
+            catalogLoadLockRef.current = null;
+            setCatalogLoadingMore(false);
+            setCatalogPaginationTick((tick) => tick + 1);
+          }
+        });
+    }, { rootMargin: "500px 0px" });
+
+    observer.observe(sentinel);
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [
+    view,
+    selectedCat,
+    search,
+    categories,
+    language,
+    recommendationKeywords,
+    catalogSource,
+    catalogHasMore,
+    catalogLoading,
+    catalogMoreError,
+    catalogMoreRetry,
+    catalogPaginationTick,
+    products,
+  ]);
 
   const visibleProducts = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const filtered = products.filter((product) => {
-      const title = `${product.titleUz ?? ""} ${product.titleRu ?? ""}`.toLowerCase();
-      const categoryName = `${product.category?.nameUz ?? ""} ${product.category?.nameRu ?? ""}`.toLowerCase();
-      const matchesQuery = !term || liveCatalog || title.includes(term) || categoryName.includes(term);
-      return matchesQuery;
-    });
-    if (!term) return filtered;
+    if (!search.trim()) return products;
+    return searchProducts(products, search, categories);
+  }, [products, search, categories]);
+  const matchingSearchProducts = useMemo(
+    () => search.trim() ? searchProducts([...products, ...knownProducts], search, categories) : [],
+    [products, knownProducts, search, categories],
+  );
+  const suggestedSearchCategories = useMemo(
+    () => search.trim().length >= 3 ? suggestCategories(categories, search) : [],
+    [categories, search],
+  );
+  const searchFallbackProducts = useMemo(() => {
+    if (!search.trim() || visibleProducts.length) return [];
+    const matching = matchingSearchProducts.filter((product) => !products.some((loaded) => loaded.id === product.id));
+    if (matching.length) return matching.slice(0, 4);
+    return [...knownProducts]
+      .sort((first, second) => productPopularity(second) - productPopularity(first))
+      .slice(0, 4);
+  }, [search, visibleProducts, matchingSearchProducts, products, knownProducts]);
+  const searchSuggestionProducts = useMemo(() => {
+    if (search.trim().length < 3) return [];
+    const uniqueProducts = Array.from(new Map([...products, ...knownProducts].map((product) => [product.id, product])).values());
+    const matching = searchProducts(uniqueProducts, search, categories);
+    if (matching.length) return matching.slice(0, 4);
+    return uniqueProducts
+      .sort((first, second) => productPopularity(second) - productPopularity(first))
+      .slice(0, 4);
+  }, [search, products, knownProducts, categories]);
 
-    const terms = term.split(/\s+/).filter(Boolean);
-    return filtered
-      .map((product, index) => {
-        const title = `${product.titleUz ?? ""} ${product.titleRu ?? ""}`.toLowerCase();
-        const exactMatch = title.includes(term);
-        const matchedTerms = terms.filter((part) => title.includes(part)).length;
-        return { product, index, score: (exactMatch ? 1000 : 0) + matchedTerms };
-      })
-      .sort((first, second) => second.score - first.score || first.index - second.index)
-      .map(({ product }) => product);
-  }, [products, search, liveCatalog]);
+  const sellerDirectory = useMemo(() => {
+    const directory = new Map(sellerProfiles.map((seller) => [seller.id, seller]));
+    const discovered: SellerProfile[] = [];
+    for (const product of [...knownProducts, ...products]) {
+      const id = sellerIdentity(product.sellerId ?? "", product.sellerName ?? "");
+      if (!id || !product.sellerName) continue;
+      discovered.push({
+        id,
+        name: product.sellerName,
+        logoUrl: product.sellerLogoUrl,
+        country: product.sellerCountry,
+        rating: product.sellerRating,
+        positiveRate: product.sellerPositiveRate,
+        followers: product.sellerFollowers,
+        description: product.sellerDescription,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    for (const seller of mergeSellerProfiles(Array.from(directory.values()), discovered)) {
+      directory.set(seller.id, seller);
+    }
+    return Array.from(directory.values()).sort((first, second) => first.name.localeCompare(second.name));
+  }, [sellerProfiles, knownProducts, products]);
+  const selectedSeller = sellerDirectory.find((seller) => seller.id === selectedSellerId);
+  const selectedSellerProducts = useMemo(() => {
+    if (!selectedSellerId) return [];
+    return Array.from(new Map([...knownProducts, ...products]
+      .filter((product) => sellerIdentity(product.sellerId ?? "", product.sellerName ?? "") === selectedSellerId)
+      .map((product) => [product.id, product])).values());
+  }, [products, knownProducts, selectedSellerId]);
 
   const categoryChildren = useMemo(() => {
     const byParent = new Map<string, ApiCategory[]>();
@@ -1195,6 +1912,7 @@ export function App() {
     return byParent;
   }, [categories]);
   const topLevelCategories = categoryChildren.get("root") ?? categories;
+  const activeCategoryParentId = categoryParentId ?? topLevelCategories[0]?.id ?? null;
   const categoryPath = useMemo(() => {
     const path: ApiCategory[] = [];
     const visited = new Set<string>();
@@ -1214,18 +1932,37 @@ export function App() {
         `${category.nameRu} ${category.nameUz}`.toLocaleLowerCase().includes(term)
       );
     }
-    return categoryChildren.get(categoryParentId ?? "root") ?? [];
-  }, [categories, categoryChildren, categoryParentId, categorySearch]);
+    return categoryChildren.get(activeCategoryParentId ?? "root") ?? [];
+  }, [categories, categoryChildren, activeCategoryParentId, categorySearch]);
 
   const catalogMessage = catalogLoading
     ? text.loading
-    : catalogError || (visibleProducts.length === 0 ? text.noGoods : "");
+    : catalogError || (visibleProducts.length === 0
+      ? search.trim()
+        ? localizeText("По запросу ничего не найдено", language)
+        : text.noGoods
+      : "");
   const saleProducts = products.filter((product) => product.status === "sale");
   const saleMessage = catalogLoading ? text.loading : catalogError || (saleProducts.length === 0 ? text.noGoods : "");
 
   const cartEntryList = knownProducts.filter((product) => cartItems[product.id]);
   const cartCount = cartEntryList.reduce((sum, product) => sum + (cartItems[product.id] ?? 0), 0);
   const subtotal = cartEntryList.reduce((sum, product) => sum + product.priceMinor * (cartItems[product.id] ?? 0), 0);
+  const detailImages = productDetails?.images.length
+    ? productDetails.images
+    : detailProduct?.imageUrl ? [detailProduct.imageUrl] : [];
+  const detailSkuPrice = selectedDetailSku
+    ? Number(readString(selectedDetailSku, "offer_sale_price", "sku_price").replace(",", "."))
+    : 0;
+  const detailSkuStock = selectedDetailSku ? readString(selectedDetailSku, "sku_available_stock") : "";
+  const detailSkuCanBeAdded = Boolean(selectedDetailSku && skuIsAvailable(selectedDetailSku) && readString(selectedDetailSku, "sku_id", "id"));
+  const detailHasVariants = Boolean(productDetails?.skus.length);
+  const selectedVariantLabel = selectedDetailSku
+    ? readRecords(selectedDetailSku.ae_sku_property_dtos)
+      .map((property) => readString(property, "sku_property_value", "property_value", "prop_value"))
+      .filter(Boolean)
+      .join(" · ")
+    : "";
   const shipping = subtotal > 0 ? 35_000 * 100 : 0;
   const discount = appliedPromo === "SAVE10" && subtotal >= MIN_PROMO_SUBTOTAL
     ? Math.round(subtotal * 0.1)
@@ -1268,8 +2005,106 @@ export function App() {
     if (message) setNotice(message);
   };
 
-  const handleAddToCart = (productId: string) => {
-    setCartItems((items) => ({ ...items, [productId]: (items[productId] ?? 0) + 1 }));
+  const chooseImageForSearch = (file: File) => {
+    const allowedTypes = new Set(["image/avif", "image/gif", "image/jpeg", "image/png", "image/webp"]);
+    if (!allowedTypes.has(file.type) || file.size > 8 * 1024 * 1024) {
+      setImageSearchError(localizeText("Выберите JPG, PNG, WebP, GIF или AVIF размером до 8 МБ.", language));
+      return;
+    }
+    if (imageSearchPreviewRef.current) URL.revokeObjectURL(imageSearchPreviewRef.current);
+    const preview = URL.createObjectURL(file);
+    imageSearchPreviewRef.current = preview;
+    setImageSearchFile(file);
+    setImageSearchPreview(preview);
+    setImageSearchResults([]);
+    setImageSearchError("");
+  };
+
+  const clearImageSearch = () => {
+    imageSearchRequestRef.current += 1;
+    if (imageSearchPreviewRef.current) URL.revokeObjectURL(imageSearchPreviewRef.current);
+    imageSearchPreviewRef.current = "";
+    setImageSearchFile(null);
+    setImageSearchPreview("");
+    setImageSearchResults([]);
+    setImageSearchError("");
+    setImageSearchLoading(false);
+  };
+
+  const runImageSearch = async () => {
+    if (!imageSearchFile) return;
+    const requestId = ++imageSearchRequestRef.current;
+    setImageSearchLoading(true);
+    setImageSearchError("");
+    setImageSearchResults([]);
+    try {
+      const response = await api.aliexpress.imageSearch(imageSearchFile);
+      if (requestId !== imageSearchRequestRef.current) return;
+      setImageSearchResults(response.results);
+      setImageSearchError(response.results.length
+        ? ""
+        : localizeText("По фото ничего не найдено", language));
+      setSelectedCat("all");
+      setCategoryParentId(null);
+      setCategorySearch("");
+      setSearch("");
+      setView("Категории");
+    } catch (error) {
+      if (requestId !== imageSearchRequestRef.current) return;
+      setImageSearchError(error instanceof Error ? error.message : localizeText("Не удалось выполнить поиск по фото", language));
+    } finally {
+      if (requestId === imageSearchRequestRef.current) setImageSearchLoading(false);
+    }
+  };
+
+  useEffect(() => () => {
+    if (imageSearchPreviewRef.current) URL.revokeObjectURL(imageSearchPreviewRef.current);
+  }, []);
+
+  useEffect(() => {
+    const handlePaste = (event: ClipboardEvent) => {
+      const pastedImage = Array.from(event.clipboardData?.items ?? [])
+        .find((item) => item.type.startsWith("image/"))
+        ?.getAsFile();
+      if (!pastedImage) return;
+      event.preventDefault();
+      chooseImageForSearch(pastedImage);
+    };
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [language]);
+
+  const handleAddToCart = (productId: string, sku?: Record<string, unknown>) => {
+    const baseProduct = knownProducts.find((product) => product.id === productId)
+      ?? products.find((product) => product.id === productId)
+      ?? (detailProduct?.id === productId ? detailProduct : undefined);
+    if (sku && baseProduct) {
+      const skuId = readString(sku, "sku_id", "id");
+      const price = Number(readString(sku, "offer_sale_price", "sku_price").replace(",", "."));
+      const variantLabel = readRecords(sku.ae_sku_property_dtos)
+        .map((property) => readString(property, "sku_property_value", "property_value", "prop_value"))
+        .filter(Boolean)
+        .join(" · ");
+      if (!skuId || !Number.isFinite(price) || price <= 0 || !skuIsAvailable(sku)) {
+        setNotice(localizeText("Этот вариант сейчас недоступен", language));
+        return;
+      }
+      const lineId = `${productId}::${skuId}`;
+      const variantProduct: ApiProduct = {
+        ...baseProduct,
+        id: lineId,
+        skuId,
+        variantLabel,
+        priceMinor: Math.round(price * 100),
+        imageUrl: marketplaceImageUrl(
+          readRecords(sku.ae_sku_property_dtos).map((property) => readString(property, "sku_image")).find(Boolean) || baseProduct.imageUrl || null,
+        ),
+      };
+      setKnownProducts((current) => Array.from(new Map([...current, variantProduct].map((product) => [product.id, product])).values()).slice(-100));
+      setCartItems((items) => ({ ...items, [lineId]: (items[lineId] ?? 0) + 1 }));
+    } else {
+      setCartItems((items) => ({ ...items, [productId]: (items[productId] ?? 0) + 1 }));
+    }
     setNotice("Товар добавлен в корзину");
   };
 
@@ -1296,9 +2131,197 @@ export function App() {
       )}
     </div>
   );
+  const renderProductGridSelector = () => (
+    <div className="grid-view-switch" role="group" aria-label={localizeText("Вид сетки товаров", language)}>
+      {([2, 3, 4] as const).map((columns) => {
+        const Icon = columns === 2 ? Grid2X2 : columns === 3 ? Grid3X3 : LayoutGrid;
+        const label = localizeText(`Сетка из ${columns} столбцов`, language);
+        return (
+          <button
+            key={columns}
+            type="button"
+            className={productGridColumns === columns ? "active" : ""}
+            aria-label={label}
+            aria-pressed={productGridColumns === columns}
+            title={label}
+            onClick={() => {
+              setProductGridColumns(columns);
+              localStorage.setItem("uriona-product-grid-columns", String(columns));
+            }}
+          >
+            <Icon size={17} />
+          </button>
+        );
+      })}
+    </div>
+  );
+  const renderCatalogPagination = () => (catalogHasMore || catalogLoadingMore || catalogMoreError) && (
+    <div className="catalog-pagination" ref={catalogLoadMoreRef} aria-live="polite">
+      {catalogLoadingMore
+        ? <span>{localizeText("Загружаем ещё товары…", language)}</span>
+        : catalogMoreError
+          ? <button
+              type="button"
+              onClick={() => {
+                setCatalogMoreError("");
+                setCatalogMoreRetry((attempt) => attempt + 1);
+              }}
+            >
+              {catalogMoreError} {text.retry}
+            </button>
+          : <span className="catalog-pagination-hint">{localizeText("Прокрутите вниз — загрузим следующие товары.", language)}</span>}
+    </div>
+  );
+  const renderSearchFallback = () => search.trim() && !visibleProducts.length && searchFallbackProducts.length > 0 && (
+    <section className="search-fallback" aria-label={localizeText("Популярные товары", language)}>
+      <div>
+        <small>{localizeText("По запросу ничего не найдено", language)}</small>
+        <h3>{localizeText(matchingSearchProducts.length ? "Подходящие товары" : "Популярные товары", language)}</h3>
+      </div>
+      <div className="search-fallback-list">
+        {searchFallbackProducts.map((product) => (
+          <button key={product.id} type="button" onClick={() => openProductDetails(product)}>
+            {product.imageUrl && <img src={product.imageUrl} alt="" loading="lazy" />}
+            <span>{productCardTitle(productTitle(product) || "")}</span>
+            <b>{formatUzs(product.priceMinor)}</b>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
 
   const openProductDetails = (product: ApiProduct) => {
+    setHoveredProductId(null);
     setDetailProduct(product);
+  };
+
+  const loadSellerInformation = async () => {
+    if (sellerFetchLoading) return;
+    const candidates = Array.from(new Map([...knownProducts, ...products]
+      .filter((product) => /^\d+$/.test(product.id.split("::")[0]))
+      .filter((product) => !sellerFetchAttempted.current.has(product.id.split("::")[0]))
+      .map((product) => [product.id.split("::")[0], product])).values())
+      .slice(0, 12);
+    if (!candidates.length) {
+      setSellerFetchError(localizeText("Нет товаров для загрузки сведений о продавцах.", language));
+      return;
+    }
+
+    setSellerFetchLoading(true);
+    setSellerFetchError("");
+    let loaded = 0;
+    let failed = 0;
+    try {
+      for (let offset = 0; offset < candidates.length; offset += 3) {
+        const batch = candidates.slice(offset, offset + 3);
+        batch.forEach((product) => sellerFetchAttempted.current.add(product.id.split("::")[0]));
+        const results = await Promise.allSettled(batch.map(async (product) => {
+          const productId = product.id.split("::")[0];
+          const payload = await api.aliexpress.productDetails(productId, {
+            ship_to_country: "UZ",
+            target_currency: "UZS",
+            target_language: language === "en" ? "en_US" : language === "uz" ? "uz_UZ" : "ru_RU",
+          });
+          return { product, details: parseAliExpressProductDetails(payload) };
+        }));
+        const enriched: ApiProduct[] = [];
+        const profiles: SellerProfile[] = [];
+        for (const result of results) {
+          if (result.status === "rejected") {
+            failed += 1;
+            sellerFetchAttempted.current.delete(batch[results.indexOf(result)]?.id.split("::")[0] ?? "");
+            console.warn("Unable to load seller details from a product", result.reason);
+            continue;
+          }
+          const { product, details } = result.value;
+          const sellerId = sellerIdentity(details.storeId, details.storeName);
+          if (!sellerId || !details.storeName) continue;
+          loaded += 1;
+          profiles.push({
+            id: sellerId,
+            name: details.storeName,
+            logoUrl: details.storeLogoUrl || undefined,
+            country: details.storeCountry || undefined,
+            rating: details.storeRating || undefined,
+            positiveRate: details.storePositiveRate || undefined,
+            followers: details.storeFollowers || undefined,
+            description: details.storeDescription || undefined,
+            updatedAt: new Date().toISOString(),
+          });
+          enriched.push({
+            ...product,
+            sellerId,
+            sellerName: details.storeName,
+            sellerLogoUrl: details.storeLogoUrl || product.sellerLogoUrl,
+            sellerCountry: details.storeCountry || product.sellerCountry,
+            sellerRating: details.storeRating || product.sellerRating,
+            sellerPositiveRate: details.storePositiveRate || product.sellerPositiveRate,
+            sellerFollowers: details.storeFollowers || product.sellerFollowers,
+            sellerDescription: details.storeDescription || product.sellerDescription,
+          });
+        }
+        if (enriched.length) {
+          const replacements = new Map(enriched.map((product) => [product.id, product]));
+          setProducts((current) => current.map((product) => replacements.get(product.id) ?? product));
+          setKnownProducts((current) => Array.from(
+            new Map([...current, ...enriched].map((product) => [product.id, product])).values(),
+          ).slice(-100));
+        }
+        if (profiles.length) setSellerProfiles((current) => mergeSellerProfiles(current, profiles));
+      }
+      if (loaded === 0) {
+        setSellerFetchError(failed
+          ? localizeText("Не удалось загрузить сведения о продавцах. Попробуйте ещё раз.", language)
+          : localizeText("Продавцы появятся после загрузки сведений из товаров.", language));
+      } else if (failed) {
+        setNotice(`${localizeText("Данные продавцов загружены", language)}: ${loaded}. ${localizeText("Ошибок загрузки", language)}: ${failed}.`);
+      } else {
+        setNotice(`${localizeText("Данные продавцов загружены", language)}: ${loaded}`);
+      }
+    } finally {
+      setSellerFetchLoading(false);
+    }
+  };
+
+  const openSellerStore = (sellerId: string) => {
+    setSelectedSellerId(sellerId);
+    setDetailProduct(null);
+    setView("Магазины");
+  };
+
+  const shareProduct = async () => {
+    if (!detailProduct) return;
+    const title = productDetails?.subject || productTitle(detailProduct) || "";
+    const shareUrl = new URL(window.location.href);
+    shareUrl.searchParams.set("product", detailProduct.id.split("::")[0]);
+    const url = shareUrl.toString();
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text: title, url });
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") return;
+        setNotice(localizeText("Не удалось поделиться товаром", language));
+      }
+      return;
+    }
+    if (!navigator.clipboard) {
+      setNotice(localizeText("Не удалось поделиться товаром", language));
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(`${title}\n${url}`);
+      setNotice(localizeText("Ссылка на товар скопирована", language));
+    } catch {
+      setNotice(localizeText("Не удалось поделиться товаром", language));
+    }
+  };
+
+  const buyNow = () => {
+    if (!detailProduct) return;
+    if (detailHasVariants && !detailSkuCanBeAdded) return;
+    handleAddToCart(detailProduct.id, detailHasVariants ? selectedDetailSku ?? undefined : undefined);
+    setDetailProduct(null);
+    setView("Корзина");
   };
 
   const applyPromo = () => {
@@ -1469,6 +2492,26 @@ export function App() {
     } finally { setProfileBusy(false); }
   };
 
+  const previewImagesFor = (product: ApiProduct) => Array.from(new Set([
+    product.imageUrl,
+    ...(hoverProductImages[product.id] ?? []),
+  ].filter((image): image is string => Boolean(image)))).slice(0, PRODUCT_PREVIEW_ZONES);
+  const handleProductPreviewMove = (event: ReactPointerEvent<HTMLDivElement>, product: ApiProduct) => {
+    if (event.pointerType !== "mouse") return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const relativePosition = Math.max(0, Math.min(0.9999, (event.clientX - bounds.left) / bounds.width));
+    hoverPointerPositions.current[product.id] = relativePosition;
+    const images = previewImagesFor(product);
+    if (images.length < 2) return;
+    const imageIndex = Math.min(images.length - 1, Math.floor(relativePosition * images.length));
+    setHoveredProductId(product.id);
+    setHoverImageIndexes((indexes) => indexes[product.id] === imageIndex
+      ? indexes
+      : { ...indexes, [product.id]: imageIndex });
+  };
+
+  const heroProducts = products.slice(0, 5);
+  const activeHeroProduct = heroProducts[heroSlideIndex % Math.max(1, heroProducts.length)];
   const renderHome = () => (
     <>
       <section className="hero-section">
@@ -1488,41 +2531,58 @@ export function App() {
           </div>
         </div>
 
-        <div className="hero-card">
-          <span className="sale-tag">URIONA</span>
-          <div className="hero-visual">
-            <ShoppingBag size={72} />
-            <strong>{text.catalog}</strong>
-            <small>{catalogLoading ? text.loadingCatalog : catalogError ? text.apiError : liveCatalog ? "Каталог готов" : catalogSource === "local" ? text.localCatalogLabel : text.noGoods}</small>
-          </div>
-        </div>
-      </section>
-
-      <section className="section-block">
-        <div className="section-head">
-          <div>
-            <small>{text.categoriesQuick}</small>
-            <h2>{text.categories}</h2>
-          </div>
-          <button type="button" onClick={() => goTo("Категории", text.allCategories)}>{text.allCategories} <ChevronRight size={16} /></button>
-        </div>
-
-        <div className="category-grid">
-          {categories.length === 0 && renderCatalogState(categoriesLoading ? text.loadingCatalog : categoriesError || text.noGoods, !categoriesLoading && Boolean(categoriesError))}
-          {topLevelCategories.slice(0, 8).map((category, index) => (
+        <div
+          className="hero-card campaign-slider"
+          onPointerDown={(event) => { heroPointerStart.current = event.clientX; }}
+          onPointerUp={(event) => {
+            if (event.target instanceof Element && event.target.closest("button")) {
+              heroPointerStart.current = null;
+              return;
+            }
+            const start = heroPointerStart.current;
+            heroPointerStart.current = null;
+            if (start === null || Math.abs(event.clientX - start) < 36) return;
+            setHeroSlideIndex((index) => (index + (event.clientX < start ? 1 : -1) + Math.max(heroProducts.length, 1)) % Math.max(heroProducts.length, 1));
+          }}
+        >
+          {activeHeroProduct?.imageUrl && <img className="campaign-slider-image" src={activeHeroProduct.imageUrl} alt="" />}
+          <div className="campaign-slider-shade" />
+          <div className="campaign-slider-copy">
+            <span className="campaign-slider-kicker">{localizeText("Выбор URIONA", language)}</span>
+            <strong>{activeHeroProduct ? productCardTitle(productTitle(activeHeroProduct) || "") : localizeText("Лучшие предложения каждый день", language)}</strong>
+            <span>{activeHeroProduct ? formatUzs(activeHeroProduct.priceMinor) : catalogLoading ? text.loadingCatalog : localizeText("Найдите что-то особенное для себя", language)}</span>
             <button
-              key={category.id}
               type="button"
-              className={`category-item ${selectedCat === category.id ? "active" : ""}`}
-              onClick={() => {
-                setSelectedCat(selectedCat === category.id ? "all" : category.id);
-                goTo("Категории", `${categoryLabel(category)} выбрана`);
-              }}
+              className="campaign-slider-cta"
+              onClick={() => activeHeroProduct ? void openProductDetails(activeHeroProduct) : goTo("Категории", "Каталог открыт")}
             >
-              <span className={`category-icon c${index % 8}`}>◇</span>
-              <b>{categoryLabel(category)}</b>
+              {localizeText("Смотреть подборку", language)} <ChevronRight size={16} />
             </button>
-          ))}
+          </div>
+          <div className="campaign-slider-controls">
+            <button
+              type="button"
+              aria-label={localizeText("Предыдущий баннер", language)}
+              onClick={() => setHeroSlideIndex((index) => (index - 1 + Math.max(heroProducts.length, 1)) % Math.max(heroProducts.length, 1))}
+            ><ChevronLeft size={18} /></button>
+            <div className="campaign-slider-dots" aria-label={localizeText("Баннеры", language)}>
+              {heroProducts.map((product, index) => (
+                <button
+                  type="button"
+                  key={product.id}
+                  className={index === heroSlideIndex % heroProducts.length ? "active" : ""}
+                  aria-label={`${localizeText("Баннер", language)} ${index + 1}`}
+                  aria-current={index === heroSlideIndex % heroProducts.length ? "true" : undefined}
+                  onClick={() => setHeroSlideIndex(index)}
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              aria-label={localizeText("Следующий баннер", language)}
+              onClick={() => setHeroSlideIndex((index) => (index + 1) % Math.max(heroProducts.length, 1))}
+            ><ChevronRight size={18} /></button>
+          </div>
         </div>
       </section>
 
@@ -1532,19 +2592,42 @@ export function App() {
             <small>{text.best}</small>
             <h2>{search.trim() ? text.searchResults(search.trim()) : text.forYou}</h2>
           </div>
-          <button type="button" onClick={() => goTo("Категории", text.catalog)}>{text.seeAll} <ChevronRight size={16} /></button>
+          <div className="section-head-actions">
+            {renderProductGridSelector()}
+            <button type="button" onClick={() => goTo("Категории", text.catalog)}>{text.seeAll} <ChevronRight size={16} /></button>
+          </div>
         </div>
 
         {catalogSource === "local" && <p className="catalog-source-note" role="status">{text.localCatalogNote}</p>}
-        <div className="product-grid">
-          {catalogMessage ? renderCatalogState(catalogMessage, Boolean(catalogError)) : visibleProducts.slice(0, 8).map((product, index) => {
+        <div className={`product-grid columns-${productGridColumns}`}>
+          {catalogMessage ? renderCatalogState(catalogMessage, Boolean(catalogError)) : visibleProducts.map((product, index) => {
             const isLiked = liked.includes(product.id);
             const tag = product.status === "sale" ? "Скидка" : product.status === "popular" ? "Популярно" : "Новинка";
+            const previewImages = previewImagesFor(product);
 
             return (
-              <article key={product.id} className="product-card">
-                <div className={`product-media media-${index % 5}`}>
-                  {product.imageUrl && <img src={product.imageUrl} alt={productTitle(product) || ""} loading="lazy" />}
+              <article
+                key={product.id}
+                className="product-card"
+                onMouseEnter={() => liveCatalog && setHoveredProductId(product.id)}
+                onMouseLeave={() => setHoveredProductId(null)}
+                onFocusCapture={() => liveCatalog && setHoveredProductId(product.id)}
+                onBlurCapture={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHoveredProductId(null);
+                }}
+              >
+                <div
+                  className={`product-media media-${index % 5}`}
+                  onPointerMove={(event) => liveCatalog && handleProductPreviewMove(event, product)}
+                >
+                  {product.imageUrl && <img
+                    src={previewImages[hoveredProductId === product.id ? hoverImageIndexes[product.id] ?? 0 : 0] ?? product.imageUrl}
+                    alt={productTitle(product) || ""}
+                    loading="lazy"
+                  />}
+                  {hoveredProductId === product.id && previewImages.length > 1 && <span className="product-preview-zones" aria-hidden="true">
+                    {previewImages.map((image, zone) => <i key={`${image}-${zone}`} className={zone === (hoverImageIndexes[product.id] ?? 0) ? "active" : ""} />)}
+                  </span>}
                   <span className="product-tag">{tag}</span>
                   <button
                     type="button"
@@ -1558,21 +2641,25 @@ export function App() {
 
                 <div className="product-body">
                   <span className="product-category">{categoryLabel(product.category) || "Категория"}</span>
-                  <h3>{productTitle(product)}</h3>
+                  <h3>{productCardTitle(productTitle(product) || "")}</h3>
                   {productDescription(product) && <p>{productDescription(product)}</p>}
-                  {liveCatalog && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>Подробнее</button>}
                   {renderProductStats(product)}
                   <div className="price-row">
                     {renderProductPrice(product)}
-                    <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}>
-                      <ShoppingBag size={14} />Купить
-                    </button>
+                    <div className="product-card-actions">
+                      {liveCatalog && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>{localizeText("Подробнее", language)}</button>}
+                      <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}>
+                        <ShoppingBag size={14} />{localizeText("Купить", language)}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </article>
             );
           })}
         </div>
+        {renderSearchFallback()}
+        {renderCatalogPagination()}
       </section>
 
       <section className="low-grid">
@@ -1595,7 +2682,7 @@ export function App() {
       <div className="section-head panel-head">
         <div>
           <small>Каталог</small>
-          <h2>Категории</h2>
+          <h2>{localizeText("Выберите направление", language)}</h2>
         </div>
         <span className="category-total">{categoryUiLabel("count", categories.length)}</span>
       </div>
@@ -1606,18 +2693,21 @@ export function App() {
             <small>{localizeText("Товары", language)}</small>
             <h2>{categoryLabel(categories.find((item) => item.id === selectedCat))}</h2>
           </div>
-          <button
-            type="button"
-            className="category-back-btn"
-            onClick={() => {
-              setSelectedCat("all");
-              setCategoryParentId(null);
-              setCategorySearch("");
-              setSearch("");
-            }}
-          >
-            {localizeText("Вернуться к категориям", language)}
-          </button>
+          <div className="catalog-product-controls">
+            {renderProductGridSelector()}
+            <button
+              type="button"
+              className="category-back-btn"
+              onClick={() => {
+                setSelectedCat("all");
+                setCategoryParentId(null);
+                setCategorySearch("");
+                setSearch("");
+              }}
+            >
+              {localizeText("Вернуться к категориям", language)}
+            </button>
+          </div>
         </div>
       )}
 
@@ -1654,49 +2744,105 @@ export function App() {
         ) : null}
       </div>
 
-      <div className="category-grid large-grid category-browser-grid">
-        {categories.length === 0 && renderCatalogState(categoriesLoading ? text.loadingCatalog : categoriesError || text.noGoods, !categoriesLoading && Boolean(categoriesError))}
-        {browsedCategories.map((category, index) => {
-          const children = categoryChildren.get(category.id) ?? [];
-          const isSelected = selectedCat === category.id;
-          return (
-            <article key={category.id} className={`category-browser-card ${isSelected ? "selected" : ""}`}>
-              <button
-                type="button"
-                className={`category-item ${isSelected ? "active" : ""}`}
-                onClick={() => {
-                  if (categorySearch || children.length === 0) {
-                    setSelectedCat(category.id);
-                    setNotice(`${categoryLabel(category)} активна`);
-                    if (categorySearch) setCategorySearch("");
-                  } else {
-                    setCategoryParentId(category.id);
-                  }
-                }}
-              >
-                <span className={`category-icon c${index % 8}`}>◇</span>
-                <b>{categoryLabel(category)}</b>
-                {children.length > 0 && <small>{categoryUiLabel("subcategories", children.length)}</small>}
-              </button>
-              <button
-                type="button"
-                className="category-select-btn"
-                onClick={() => {
+      <div className="category-browser-layout">
+        {!categorySearch && <aside className="category-root-sidebar" aria-label={localizeText("Популярные категории", language)}>
+          <h3>{localizeText("Популярные категории", language)}</h3>
+          {topLevelCategories.map((category, index) => (
+            <button
+              type="button"
+              key={category.id}
+              className={activeCategoryParentId === category.id ? "active" : ""}
+              onClick={() => {
+                const children = categoryChildren.get(category.id) ?? [];
+                if (!children.length) {
                   setSelectedCat(category.id);
-                  if (categorySearch) setCategorySearch("");
                   setNotice(`${categoryLabel(category)} активна`);
-                }}
-              >
-                {categoryUiLabel(isSelected ? "selected" : "select")}
-              </button>
-            </article>
-          );
-        })}
-        {!categoriesLoading && categories.length > 0 && browsedCategories.length === 0 && (
-          <p className="category-empty-state" role="status">{categorySearch ? categoryUiLabel("noResults") : text.emptyCategories}</p>
-        )}
+                } else {
+                  setCategoryParentId(category.id);
+                }
+              }}
+            >
+              <CategoryIllustration category={category} index={index} />
+              <span>{categoryLabel(category)}</span>
+              <ChevronRight size={16} />
+            </button>
+          ))}
+        </aside>}
+        <div className="category-browser-content">
+          {!categorySearch && activeCategoryParentId && (() => {
+            const activeCategory = categories.find((category) => category.id === activeCategoryParentId);
+            return activeCategory ? <div className="category-browser-heading">
+              <div>
+                <small>{localizeText("Выберите направление", language)}</small>
+                <h3>{categoryLabel(activeCategory)}</h3>
+              </div>
+              <button type="button" onClick={() => {
+                setSelectedCat(activeCategory.id);
+                setNotice(`${categoryLabel(activeCategory)} активна`);
+              }}>{categoryUiLabel("select")} <ChevronRight size={15} /></button>
+            </div> : null;
+          })()}
+          <div className="category-subcategory-grid">
+            {categories.length === 0 && renderCatalogState(categoriesLoading ? text.loadingCatalog : categoriesError || text.noGoods, !categoriesLoading && Boolean(categoriesError))}
+            {browsedCategories.map((category, index) => {
+              const categoryChildCount = categoryChildren.get(category.id)?.length ?? 0;
+              return (
+                <button
+                  type="button"
+                  key={category.id}
+                  className="category-subcategory-card"
+                  onClick={() => {
+                    setSelectedCat(category.id);
+                    setCategorySearch("");
+                    setNotice(`${categoryLabel(category)} активна`);
+                  }}
+                >
+                  <CategoryIllustration category={category} index={index} />
+                  <span>{categoryLabel(category)}</span>
+                  {categoryChildCount > 0 && <small>{categoryUiLabel("subcategories", categoryChildCount)}</small>}
+                  <ChevronRight size={15} />
+                </button>
+              );
+            })}
+            {!categoriesLoading && categories.length > 0 && browsedCategories.length === 0 && (
+              <p className="category-empty-state" role="status">{categorySearch ? categoryUiLabel("noResults") : text.emptyCategories}</p>
+            )}
+          </div>
+        </div>
       </div>
         </>
+      )}
+
+      {imageSearchResults.length > 0 && selectedCat === "all" && !search.trim() && (
+        <section className="image-search-results">
+          <div className="section-head">
+            <div>
+              <small>{localizeText("Поиск по фото", language)}</small>
+              <h2>{localizeText("Результаты поиска по фото", language)}</h2>
+            </div>
+          </div>
+          <div className="image-search-results-grid">
+            {imageSearchResults.map((match) => (
+              <article className="image-search-result-card" key={match.productId}>
+                <img src={match.thumbnail} alt="" loading="lazy" />
+                <div>
+                  <b>{match.title}</b>
+                  <small>{match.source}</small>
+                  <button type="button" className="product-details-btn" onClick={() => void openProductDetails({
+                    id: match.productId,
+                    categoryId: null,
+                    titleUz: match.title,
+                    titleRu: match.title,
+                    currency: "UZS",
+                    priceMinor: 0,
+                    status: "popular",
+                    imageUrl: match.thumbnail,
+                  })}>{localizeText("Открыть товар", language)} <ChevronRight size={15} /></button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       )}
 
       {(selectedCat !== "all" || Boolean(search.trim())) && products.length === 0 ? (
@@ -1714,39 +2860,55 @@ export function App() {
                 <small>Товары</small>
                 <h2>{text.searchResults(search.trim())}</h2>
               </div>
-              <button
-                type="button"
-                className="category-back-btn"
-                onClick={() => setSearch("")}
-              >
-                {localizeText("Вернуться к категориям", language)}
-              </button>
+              <div className="catalog-product-controls">
+                {renderProductGridSelector()}
+                <button
+                  type="button"
+                  className="category-back-btn"
+                  onClick={() => setSearch("")}
+                >
+                  {localizeText("Вернуться к категориям", language)}
+                </button>
+              </div>
             </div>
           )}
           {catalogSource === "local" && <p className="catalog-source-note" role="status">{text.localCatalogNote}</p>}
-          <div className="product-grid compact-grid">
-            {catalogMessage ? renderCatalogState(catalogMessage, Boolean(catalogError)) : visibleProducts.map((product, index) => (
-              <article key={product.id} className="product-card compact-card">
-                <div className={`product-media media-${index % 5}`}>
-                  {product.imageUrl && <img src={product.imageUrl} alt={productTitle(product) || ""} loading="lazy" />}
-                  <span className="product-tag">{product.status === "sale" ? "Скидка" : "Новинка"}</span>
-                  <button type="button" className={`wish-btn ${liked.includes(product.id) ? "active" : ""}`} onClick={() => toggleFavorite(product.id)} aria-label={liked.includes(product.id) ? "Удалить из избранного" : "Добавить в избранное"}>
-                    <Heart size={15} fill={liked.includes(product.id) ? "currentColor" : "none"} />
-                  </button>
-                </div>
-                <div className="product-body">
-                  <span className="product-category">{categoryLabel(product.category)}</span>
-                  <h3>{productTitle(product)}</h3>
-                  {liveCatalog && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>Подробнее</button>}
-                  {renderProductStats(product)}
-                  <div className="price-row">
-                    {renderProductPrice(product)}
-                    <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}><Plus size={14} />Добавить</button>
+          <div className={`product-grid compact-grid columns-${productGridColumns}`}>
+            {catalogMessage ? renderCatalogState(catalogMessage, Boolean(catalogError)) : visibleProducts.map((product, index) => {
+              const previewImages = previewImagesFor(product);
+              return (
+                <article
+                  key={product.id}
+                  className="product-card compact-card"
+                  onMouseEnter={() => liveCatalog && setHoveredProductId(product.id)}
+                  onMouseLeave={() => setHoveredProductId(null)}
+                >
+                  <div className={`product-media media-${index % 5}`} onPointerMove={(event) => liveCatalog && handleProductPreviewMove(event, product)}>
+                    {product.imageUrl && <img src={previewImages[hoveredProductId === product.id ? hoverImageIndexes[product.id] ?? 0 : 0] ?? product.imageUrl} alt={productTitle(product) || ""} loading="lazy" />}
+                    {hoveredProductId === product.id && previewImages.length > 1 && <span className="product-preview-zones" aria-hidden="true">{previewImages.map((image, zone) => <i key={`${image}-${zone}`} className={zone === (hoverImageIndexes[product.id] ?? 0) ? "active" : ""} />)}</span>}
+                    <span className="product-tag">{product.status === "sale" ? "Скидка" : "Новинка"}</span>
+                    <button type="button" className={`wish-btn ${liked.includes(product.id) ? "active" : ""}`} onClick={() => toggleFavorite(product.id)} aria-label={liked.includes(product.id) ? "Удалить из избранного" : "Добавить в избранное"}>
+                      <Heart size={15} fill={liked.includes(product.id) ? "currentColor" : "none"} />
+                    </button>
                   </div>
-                </div>
-              </article>
-            ))}
+                  <div className="product-body">
+                    <span className="product-category">{categoryLabel(product.category)}</span>
+                    <h3>{productCardTitle(productTitle(product) || "")}</h3>
+                    {renderProductStats(product)}
+                    <div className="price-row">
+                      {renderProductPrice(product)}
+                      <div className="product-card-actions">
+                        {liveCatalog && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>{localizeText("Подробнее", language)}</button>}
+                        <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}><Plus size={14} />{localizeText("Добавить", language)}</button>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
+          {renderSearchFallback()}
+          {renderCatalogPagination()}
         </>
       ) : null}
     </section>
@@ -1767,7 +2929,7 @@ export function App() {
         <p>Тестовый промокод SAVE10 действует на заказы от 500 000 сум.</p>
       </div>
 
-      <div className="product-grid compact-grid">
+      <div className={`product-grid compact-grid columns-${productGridColumns}`}>
         {saleMessage ? renderCatalogState(saleMessage, Boolean(catalogError)) : saleProducts.map((product, index) => (
           <article key={product.id} className="product-card compact-card">
             <div className={`product-media media-${index % 5}`}>
@@ -1776,12 +2938,14 @@ export function App() {
             </div>
             <div className="product-body">
               <span className="product-category">{categoryLabel(product.category)}</span>
-              <h3>{productTitle(product)}</h3>
-              {liveCatalog && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>Подробнее</button>}
+              <h3>{productCardTitle(productTitle(product) || "")}</h3>
               {renderProductStats(product)}
               <div className="price-row">
                 <strong>{formatUzs(product.priceMinor)}</strong>
-                <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}><Plus size={14} />Купить</button>
+                <div className="product-card-actions">
+                  {liveCatalog && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>{localizeText("Подробнее", language)}</button>}
+                  <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}><Plus size={14} />{localizeText("Купить", language)}</button>
+                </div>
               </div>
             </div>
           </article>
@@ -1878,8 +3042,8 @@ export function App() {
                   {product.imageUrl && <img src={product.imageUrl} alt="" loading="lazy" />}
                 </div>
                 <div className="cart-copy">
-                  <h3>{productTitle(product)}</h3>
-                  <p>{formatUzs(product.priceMinor)}</p>
+                  <h3>{productCardTitle(productTitle(product) || "")}</h3>
+                  <p>{product.variantLabel ? `${product.variantLabel} · ` : ""}{formatUzs(product.priceMinor)}</p>
                 </div>
                 <div className="qty-control">
                   <button type="button" onClick={() => handleQtyChange(product.id, -1)}><Minus size={14} /></button>
@@ -2037,10 +3201,10 @@ export function App() {
               </>}
               {profileSection === "wishlist" && <>
                 <div className="profile-section-heading"><div><small>Сохранённые товары</small><h3>Избранное · {liked.length}</h3></div></div>
-                {savedProducts.length ? <div className="product-grid compact-grid">{savedProducts.map((product, index) => (
+                {savedProducts.length ? <div className={`product-grid compact-grid columns-${productGridColumns}`}>{savedProducts.map((product, index) => (
                   <article className="product-card compact-card" key={product.id}>
                     <div className={`product-media media-${index % 5}`}>{product.imageUrl && <img src={product.imageUrl} alt={productTitle(product) || ""} loading="lazy" />}</div>
-                    <div className="product-body"><span className="product-category">{categoryLabel(product.category) || "Товар"}</span><h3>{productTitle(product)}</h3>
+                    <div className="product-body"><span className="product-category">{categoryLabel(product.category) || "Товар"}</span><h3>{productCardTitle(productTitle(product) || "")}</h3>
                       <div className="price-row"><strong>{formatUzs(product.priceMinor)}</strong><button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}><ShoppingBag size={14} />В корзину</button></div>
                       <div className="profile-card-actions">{/^\d+$/.test(product.id) && <button type="button" onClick={() => openProductDetails(product)}>Подробнее</button>}<button type="button" onClick={() => toggleFavorite(product.id)}>Убрать</button></div>
                     </div>
@@ -2048,7 +3212,7 @@ export function App() {
                 ))}</div> : <div className="profile-empty"><Heart size={30} /><h3>Избранное пока пусто</h3><p>Нажимайте на сердечко в карточке товара — товары сохранятся на этом устройстве.</p><button type="button" className="secondary-btn" onClick={() => goTo("Каталог")}>Найти товары</button></div>}
                 {unavailableFavorites > 0 && <p className="profile-hint">{unavailableFavorites} сохранённых товаров сейчас отсутствуют в локальном каталоге. Когда каталог загрузится, они появятся здесь.</p>}
               </>}
-              {profileSection === "stores" && <div className="profile-empty"><Store size={30} /><h3>Любимые магазины</h3><p>В каталоге пока нет данных продавцов, необходимых для подписки на магазин.</p><button type="button" className="secondary-btn" onClick={() => goTo("Каталог")}>Вернуться в каталог</button></div>}
+              {profileSection === "stores" && <div className="profile-empty"><Store size={30} /><h3>Магазины продавцов</h3><p>{sellerDirectory.length ? `${sellerDirectory.length} ${localizeText("продавцов", language)}` : localizeText("Продавцы появятся после загрузки сведений из товаров.", language)}</p><button type="button" className="secondary-btn" onClick={() => sellerDirectory.length ? goTo("Магазины") : void loadSellerInformation()}>{sellerDirectory.length ? localizeText("Магазины продавцов", language) : localizeText("Загрузить данные продавцов", language)}</button></div>}
               {profileSection === "reviews" && <div className="profile-empty"><Star size={30} /><h3>Мои отзывы</h3><p>Отзывы можно оставить после доставки заказа. Публикация и хранение отзывов пока не подключены.</p><button type="button" className="secondary-btn" onClick={() => setProfileSection("orders")}>Мои заказы</button></div>}
               {profileSection === "questions" && <div className="profile-empty"><HelpCircle size={30} /><h3>Вопросы и ответы</h3><p>Вопросы продавцам и история ответов пока не подключены: для этого нужен разрешённый API продавцов и отдельный раздел товара.</p><button type="button" className="secondary-btn" onClick={() => goTo("Поддержка")}>Открыть справку</button></div>}
               {profileSection === "coupons" && <div className="profile-coupon">
@@ -2091,10 +3255,97 @@ export function App() {
     );
   };
 
+  const renderStores = () => (
+    <section className="section-block seller-directory">
+      <div className="section-head">
+        <div>
+          <small>{localizeText("О продавцах", language)}</small>
+          <h2>{localizeText("Магазины продавцов", language)}</h2>
+        </div>
+        <button type="button" className="secondary-btn" onClick={() => void loadSellerInformation()} disabled={sellerFetchLoading}>
+          <Store size={16} />
+          {sellerFetchLoading
+            ? localizeText("Загружаем сведения о продавцах…", language)
+            : localizeText(sellerDirectory.length ? "Загрузить ещё данные из каталога" : "Загрузить данные продавцов", language)}
+        </button>
+      </div>
+      <p className="seller-directory-note">{localizeText("Полный список товаров продавца пока недоступен через подключённый API.", language)}</p>
+      {sellerFetchError && <p className="seller-directory-error" role="alert">{sellerFetchError}</p>}
+
+      {selectedSeller ? (
+        <div className="seller-store-view">
+          <button type="button" className="seller-back-btn" onClick={() => setSelectedSellerId("")}>
+            <ChevronLeft size={16} />{localizeText("Все магазины", language)}
+          </button>
+          <section className="seller-profile-card">
+            {selectedSeller.logoUrl
+              ? <img src={selectedSeller.logoUrl} alt="" />
+              : <span className="seller-profile-icon"><Store size={25} /></span>}
+            <div className="seller-profile-copy">
+              <small>{localizeText("Данные магазина", language)}</small>
+              <h3>{selectedSeller.name}</h3>
+              {selectedSeller.description && <p>{selectedSeller.description}</p>}
+              <div className="seller-profile-facts">
+                {selectedSeller.country && <span>{localizeText("Страна продавца", language)}: {selectedSeller.country}</span>}
+                {selectedSeller.rating && <span><Star size={14} fill="currentColor" />{localizeText("Рейтинг продавца", language)}: {selectedSeller.rating}</span>}
+                {selectedSeller.positiveRate && <span>{localizeText("Положительные отзывы", language)}: {selectedSeller.positiveRate}</span>}
+                {selectedSeller.followers && <span>{localizeText("Подписчики", language)}: {selectedSeller.followers}</span>}
+              </div>
+            </div>
+          </section>
+          <div className="seller-products-heading">
+            <h3>{localizeText("Товары из просмотренного каталога", language)}</h3>
+            {renderProductGridSelector()}
+          </div>
+          {selectedSellerProducts.length ? (
+            <div className={`seller-products-grid columns-${productGridColumns}`}>
+              {selectedSellerProducts.map((product) => (
+                <button type="button" className="seller-product-card" key={product.id} onClick={() => void openProductDetails(product)}>
+                  {product.imageUrl
+                    ? <img src={product.imageUrl} alt="" loading="lazy" />
+                    : <span className="seller-product-placeholder"><Package size={22} /></span>}
+                  <span><b>{productCardTitle(productTitle(product) || "")}</b><strong>{formatUzs(product.priceMinor)}</strong></span>
+                </button>
+              ))}
+            </div>
+          ) : <p className="seller-directory-note">{localizeText("В этом магазине пока нет других загруженных товаров.", language)}</p>}
+        </div>
+      ) : sellerDirectory.length ? (
+        <div className="seller-directory-grid">
+          {sellerDirectory.map((seller) => {
+            const productsCount = new Set([...knownProducts, ...products].filter(
+              (product) => sellerIdentity(product.sellerId ?? "", product.sellerName ?? "") === seller.id,
+            ).map((product) => product.id)).size;
+            return (
+              <button type="button" className="seller-directory-card" key={seller.id} onClick={() => setSelectedSellerId(seller.id)}>
+                {seller.logoUrl ? <img src={seller.logoUrl} alt="" /> : <span className="seller-profile-icon"><Store size={22} /></span>}
+                <span className="seller-directory-card-copy">
+                  <b>{seller.name}</b>
+                  {seller.country && <small>{seller.country}</small>}
+                  <small>{productsCount} {localizeText("товаров", language)}</small>
+                </span>
+                <ChevronRight size={18} />
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="seller-directory-empty">
+          <Store size={32} />
+          <p>{localizeText("Продавцы появятся после загрузки сведений из товаров.", language)}</p>
+          <button type="button" className="primary-btn" onClick={() => void loadSellerInformation()} disabled={sellerFetchLoading}>
+            {localizeText("Загрузить данные продавцов", language)}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+
   const renderMain = () => {
     if (view === "Главная") return renderHome();
     if (view === "Категории") return renderCatalog();
     if (view === "Каталог") return renderCatalog();
+    if (view === "Магазины") return renderStores();
     if (view === "Скидки") return renderSales();
     if (view === "Как заказать") return renderHowToOrder();
     if (view === "Доставка") return renderDelivery();
@@ -2122,8 +3373,115 @@ export function App() {
 
           <div className="search-box">
             <Search size={18} />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} />
-            <button type="button" onClick={() => setNotice(search.trim() ? search.trim() : text.search)}>⌕</button>
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && search.trim()) {
+                  setSearchFocused(false);
+                  goTo("Категории", text.searchResults(search.trim()));
+                }
+                if (event.key === "Escape") setSearchFocused(false);
+              }}
+              placeholder={text.search}
+              aria-autocomplete="list"
+              aria-expanded={searchFocused && search.trim().length >= 3}
+              aria-controls="product-search-suggestions"
+            />
+            <button type="button" aria-label={localizeText("Найти товары", language)} onClick={() => {
+              setSearchFocused(false);
+              if (search.trim()) goTo("Категории", text.searchResults(search.trim()));
+            }}>⌕</button>
+            <input
+              ref={imageSearchInputRef}
+              className="image-search-file-input"
+              type="file"
+              accept="image/avif,image/gif,image/jpeg,image/png,image/webp"
+              capture="environment"
+              aria-label={localizeText("Выбрать изображение", language)}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) chooseImageForSearch(file);
+                event.currentTarget.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="image-search-trigger"
+              aria-label={localizeText("Поиск по фото", language)}
+              title={localizeText("Поиск по фото", language)}
+              onClick={() => imageSearchInputRef.current?.click()}
+            ><Camera size={18} /></button>
+            {(imageSearchPreview || imageSearchError) && <div className="image-search-panel">
+              <div className="image-search-panel-heading">
+                <strong>{localizeText("Поиск по фото", language)}</strong>
+                <button type="button" aria-label={localizeText("Удалить фото", language)} onClick={clearImageSearch}><X size={16} /></button>
+              </div>
+              {imageSearchPreview && <img className="image-search-preview" src={imageSearchPreview} alt="" />}
+              <p>{localizeText("Загрузить фото или вставить из буфера", language)}</p>
+              <small>{localizeText("Фото будет отправлено SerpApi и Google Lens для поиска.", language)}</small>
+              {imageSearchError && <span className="image-search-error" role="alert">{imageSearchError}</span>}
+              <div className="image-search-panel-actions">
+                <button type="button" className="secondary-btn" onClick={() => imageSearchInputRef.current?.click()}>
+                  {localizeText("Выбрать изображение", language)}
+                </button>
+                <button type="button" className="primary-btn" disabled={!imageSearchFile || imageSearchLoading} onClick={() => void runImageSearch()}>
+                  {imageSearchLoading ? localizeText("Ищем похожие товары…", language) : localizeText("Поиск по фото", language)}
+                </button>
+              </div>
+            </div>}
+            {searchFocused && search.trim().length >= 3 && (
+              <div className="search-autocomplete" id="product-search-suggestions" role="listbox">
+                {suggestedSearchCategories.length > 0 && (
+                  <div className="search-suggestion-group">
+                    <small>{localizeText("Категории по запросу", language)}</small>
+                    {suggestedSearchCategories.map((category) => (
+                      <button
+                        key={`category-${category.id}`}
+                        type="button"
+                        role="option"
+                        className="search-suggestion-item"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          setSearch("");
+                          setSelectedCat(category.id);
+                          setCategoryParentId(null);
+                          setSearchFocused(false);
+                          goTo("Категории", `${categoryLabel(category)} выбрана`);
+                        }}
+                      >
+                        <CategoryIllustration category={category} index={0} />
+                        <span>{categoryLabel(category)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {searchSuggestionProducts.length > 0 && (
+                  <div className="search-suggestion-group">
+                    <small>{localizeText(matchingSearchProducts.length ? "Подходящие товары" : "Популярные товары", language)}</small>
+                    {searchSuggestionProducts.map((product) => (
+                      <button
+                        key={`product-${product.id}`}
+                        type="button"
+                        role="option"
+                        className="search-suggestion-item product-search-suggestion"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          setSearchFocused(false);
+                          openProductDetails(product);
+                        }}
+                      >
+                        {product.imageUrl && <img src={product.imageUrl} alt="" loading="lazy" />}
+                        <span>{productCardTitle(productTitle(product) || "")}</span>
+                        <b>{formatUzs(product.priceMinor)}</b>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="utility-controls">
@@ -2159,55 +3517,222 @@ export function App() {
                 goTo(item.view, item.message);
               }}
             >
-              {item.view === "Каталог" ? text.catalog : item.view === "Скидки" ? text.sales : item.view === "Как заказать" ? text.how : item.view === "Доставка" ? text.delivery : text.support}
+              {item.view === "Каталог" ? text.catalog
+                : item.view === "Магазины" ? localizeText("Магазины", language)
+                  : item.view === "Скидки" ? text.sales
+                    : item.view === "Как заказать" ? text.how
+                      : item.view === "Доставка" ? text.delivery : text.support}
             </button>
           ))}
         </nav>
       </header>
 
       <main className="page">{renderMain()}</main>
+      <footer className="site-footer">
+        <section className="site-footer-column">
+          <h2>{localizeText("О нас", language)}</h2>
+          <button type="button" onClick={() => setNotice(localizeText("Информация появится позже", language))}>{localizeText("О URIONA", language)}</button>
+          <button type="button" onClick={() => goTo("Доставка")}>{localizeText("Пункты выдачи", language)}</button>
+          <button type="button" onClick={() => setNotice(localizeText("Информация появится позже", language))}>{localizeText("Вакансии", language)}</button>
+        </section>
+        <section className="site-footer-column">
+          <h2>{localizeText("Покупателям", language)}</h2>
+          <button type="button" onClick={() => goTo("Поддержка")}>{localizeText("Связаться с нами", language)}</button>
+          <button type="button" onClick={() => goTo("Поддержка")}>{localizeText("Частые вопросы", language)}</button>
+          {["Конфиденциальность", "Обработка персональных данных", "Пользовательское соглашение"].map((label) => (
+            <a
+              key={label}
+              href={`#${label === "Конфиденциальность" ? "privacy-policy" : label === "Обработка персональных данных" ? "personal-data" : "terms-of-use"}`}
+              onClick={(event) => {
+                event.preventDefault();
+                setNotice(localizeText("Документ готовится к публикации", language));
+              }}
+            >{localizeText(label, language)}</a>
+          ))}
+        </section>
+        <section className="site-footer-column">
+          <h2>{localizeText("Продавцам", language)}</h2>
+          <button type="button" onClick={() => goTo("Магазины")}>{localizeText("Магазины продавцов", language)}</button>
+          <button type="button" onClick={() => setNotice(localizeText("Информация для продавцов скоро появится", language))}>{localizeText("Стать продавцом URIONA", language)}</button>
+          <button type="button" onClick={() => setNotice(localizeText("Информация для продавцов скоро появится", language))}>{localizeText("Кабинет продавца", language)}</button>
+          <button type="button" onClick={() => setNotice(localizeText("Информация для продавцов скоро появится", language))}>{localizeText("Открыть пункт выдачи", language)}</button>
+        </section>
+      </footer>
 
       {detailProduct && (
         <div className="product-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailProduct(null); }}>
           <section className="product-dialog" role="dialog" aria-modal="true" aria-labelledby="product-dialog-title">
             <button type="button" className="product-dialog-close" onClick={() => setDetailProduct(null)} aria-label="Закрыть"><X size={20} /></button>
-            {(productDetails?.images[0] || detailProduct.imageUrl) && <img className="product-dialog-image" src={productDetails?.images[0] || detailProduct.imageUrl || undefined} alt={productDetails?.subject || productTitle(detailProduct) || ""} />}
-            <small>{categoryLabel(detailProduct.category) || localizeText("Товар", language)}</small>
-            <h2 id="product-dialog-title">{productDetails?.subject || productTitle(detailProduct)}</h2>
-            <p>{productDetails?.description || productDescription(detailProduct) || (detailLoading ? "Загружаем описание товара…" : "Описание не предоставлено API.")}</p>
-            <strong>{formatUzs(detailProduct.priceMinor)}</strong>
-            {detailLoading && <p className="product-detail-state" role="status">{localizeText("Загружаем сведения о товаре…", language)}</p>}
-            {detailError && <div className="product-detail-state" role="alert"><span>{detailError}</span><button type="button" onClick={() => setDetailAttempt((attempt) => attempt + 1)}>Повторить</button></div>}
-            {productDetails && <>
-              <dl className="product-detail-meta">
-                {productDetails.status && <div><dt>Статус</dt><dd>{productDetails.status}</dd></div>}
-                {productDetails.categoryId && <div><dt>ID категории</dt><dd>{productDetails.categoryId}</dd></div>}
-                {productDetails.storeName && <div><dt>Магазин</dt><dd>{productDetails.storeName}</dd></div>}
-                {productDetails.grossWeight && <div><dt>Вес брутто</dt><dd>{productDetails.grossWeight}</dd></div>}
-                {productDetails.dimensions && <div><dt>Размер упаковки</dt><dd>{productDetails.dimensions}</dd></div>}
-                {productDetails.deliveryTime && <div><dt>Срок отправки</dt><dd>{productDetails.deliveryTime}</dd></div>}
-              </dl>
-              {productDetails.images.length > 1 && <div className="product-detail-images" aria-label="Фотографии товара">
-                {productDetails.images.slice(1, 7).map((image) => <img key={image} src={image} alt="" loading="lazy" />)}
+            <div className="product-dialog-layout">
+              <div className="product-dialog-gallery">
+                {detailImages.length > 0 && <>
+                  <img
+                    className="product-dialog-image"
+                    src={selectedDetailSku
+                      ? marketplaceImageUrl(readRecords(selectedDetailSku.ae_sku_property_dtos).map((property) => readString(property, "sku_image")).find(Boolean) || null)
+                        || detailImages[selectedDetailImage] || detailImages[0]
+                      : detailImages[selectedDetailImage] || detailImages[0]}
+                    alt={productDetails?.subject || productTitle(detailProduct) || ""}
+                    onError={(event) => {
+                      if (detailProduct.imageUrl && event.currentTarget.src !== detailProduct.imageUrl) event.currentTarget.src = detailProduct.imageUrl;
+                    }}
+                  />
+                  {detailImages.length > 1 && <div className="product-detail-thumbnails" aria-label={localizeText("Фотографии товара", language)}>
+                    {detailImages.slice(0, 10).map((image, index) => (
+                      <button
+                        type="button"
+                        key={image}
+                        className={selectedDetailImage === index ? "active" : ""}
+                        onClick={() => setSelectedDetailImage(index)}
+                        aria-label={`${localizeText("Фото", language)} ${index + 1}`}
+                        aria-pressed={selectedDetailImage === index}
+                      >
+                        <img src={image} alt="" loading="lazy" />
+                      </button>
+                    ))}
+                  </div>}
+                </>}
+              </div>
+
+              <div className="product-dialog-content">
+                <small>{categoryLabel(detailProduct.category) || localizeText("Товар", language)}</small>
+                <h2 id="product-dialog-title">{productDetails?.subject || productTitle(detailProduct)}</h2>
+                {productDetails?.storeName && (
+                  <button
+                    type="button"
+                    className="product-dialog-seller"
+                    onClick={() => openSellerStore(sellerIdentity(productDetails.storeId, productDetails.storeName))}
+                  >
+                    <Store size={16} />{productDetails.storeName}<ChevronRight size={16} />
+                  </button>
+                )}
+                {(productDetails?.rating || productDetails?.orders || detailProduct.rating || detailProduct.orders) && (
+                  <div className="product-dialog-stats">
+                    {(productDetails?.rating || detailProduct.rating) && (
+                      <span><Star size={15} fill="currentColor" />{productDetails?.rating || detailProduct.rating}</span>
+                    )}
+                    {(productDetails?.orders || detailProduct.orders) && (
+                      <span>{productDetails?.orders || detailProduct.orders} {localizeText("покупок", language)}</span>
+                    )}
+                  </div>
+                )}
+                {productDetails?.description && <p className="product-dialog-description">{productDetails.description}</p>}
+                <strong>{selectedDetailSku && detailSkuPrice > 0 ? formatUzs(Math.round(detailSkuPrice * 100)) : formatUzs(detailProduct.priceMinor)}</strong>
+                {detailLoading && <p className="product-detail-state" role="status">{localizeText("Загружаем сведения о товаре…", language)}</p>}
+                {detailError && <div className="product-detail-state" role="alert"><span>{detailError}</span><button type="button" onClick={() => setDetailAttempt((attempt) => attempt + 1)}>Повторить</button></div>}
+                {productDetails && <>
+                  {(productDetails.grossWeight || productDetails.dimensions || productDetails.deliveryTime) && (
+                    <dl className="product-detail-meta">
+                      {productDetails.grossWeight && <div><dt>Вес брутто</dt><dd>{productDetails.grossWeight}</dd></div>}
+                      {productDetails.dimensions && <div><dt>Размер упаковки</dt><dd>{productDetails.dimensions}</dd></div>}
+                      {productDetails.deliveryTime && <div><dt>Срок отправки</dt><dd>{productDetails.deliveryTime}</dd></div>}
+                    </dl>
+                  )}
+                  {productDetails.videos.length > 0 && <div className="product-detail-videos">
+                    {productDetails.videos.map((video) => <video key={video} src={video} controls preload="none" aria-label="Видео товара" />)}
+                  </div>}
+                  {productDetails.skus.length > 0 && <div className="product-detail-skus">
+                    <h3>{localizeText("Выберите вариант", language)}</h3>
+                    {detailSkuGroups.map((group) => (
+                      <fieldset className="product-detail-option" key={group.id}>
+                        <legend>{group.name}</legend>
+                        <div className="product-detail-option-values">
+                          {group.values.map((value) => {
+                            const compatibleSku = productDetails.skus.find((sku) => {
+                              if (!skuIsAvailable(sku)) return false;
+                              const skuProperties = readRecords(sku.ae_sku_property_dtos);
+                              const property = skuProperties.find((item) =>
+                                readString(item, "sku_property_id", "property_name", "sku_property_name") === group.id
+                              );
+                              return property && readString(property, "sku_property_value", "property_value", "prop_value") === value;
+                            });
+                            const propertyImage = compatibleSku
+                              ? readRecords(compatibleSku.ae_sku_property_dtos)
+                                .find((property) =>
+                                  readString(property, "sku_property_id", "property_name", "sku_property_name") === group.id
+                                  && readString(property, "sku_property_value", "property_value", "prop_value") === value
+                                )
+                              : undefined;
+                            return (
+                              <button
+                                type="button"
+                                key={value}
+                                className={selectedSkuProperties[group.id] === value ? "active" : ""}
+                                disabled={!compatibleSku}
+                                onClick={() => setSelectedSkuProperties((current) => {
+                                  const next = { ...current, [group.id]: value };
+                                  const hasCombination = productDetails.skus.some((sku) => {
+                                    if (!skuIsAvailable(sku)) return false;
+                                    const skuProperties = readRecords(sku.ae_sku_property_dtos);
+                                    return detailSkuGroups.every((candidateGroup) => {
+                                      const expected = next[candidateGroup.id];
+                                      if (!expected) return true;
+                                      const property = skuProperties.find((item) =>
+                                        readString(item, "sku_property_id", "property_name", "sku_property_name") === candidateGroup.id
+                                      );
+                                      return property && readString(property, "sku_property_value", "property_value", "prop_value") === expected;
+                                    });
+                                  });
+                                  if (!hasCombination) {
+                                    for (const otherGroup of detailSkuGroups) {
+                                      if (otherGroup.id !== group.id) delete next[otherGroup.id];
+                                    }
+                                  }
+                                  return next;
+                                })}
+                                aria-pressed={selectedSkuProperties[group.id] === value}
+                              >
+                                {readString(propertyImage ?? {}, "sku_image") && <img src={marketplaceImageUrl(readString(propertyImage ?? {}, "sku_image")) || undefined} alt="" loading="lazy" />}
+                                {value}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </fieldset>
+                    ))}
+                    {selectedDetailSku && <p className="product-detail-stock">
+                      {selectedVariantLabel}{detailSkuStock ? ` · ${localizeText("В наличии", language)}: ${detailSkuStock}` : ""}
+                    </p>}
+                  </div>}
+                </>}
+                <div className="product-dialog-actions">
+                  <button
+                    type="button"
+                    className="product-dialog-icon-action"
+                    aria-label={localizeText(liked.includes(detailProduct.id) ? "Удалить из избранного" : "Добавить в избранное", language)}
+                    onClick={() => toggleFavorite(detailProduct.id)}
+                  >
+                    <Heart size={18} fill={liked.includes(detailProduct.id) ? "currentColor" : "none"} />
+                    {localizeText(liked.includes(detailProduct.id) ? "Удалить из избранного" : "Добавить в избранное", language)}
+                  </button>
+                  <button type="button" className="product-dialog-icon-action" onClick={() => void shareProduct()}>
+                    <Share2 size={18} />{localizeText("Поделиться", language)}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="primary-btn product-detail-add"
+                  disabled={detailLoading || (detailHasVariants ? !detailSkuCanBeAdded : false)}
+                  onClick={buyNow}
+                >
+                  <ShoppingBag size={17} />{localizeText("Купить сейчас", language)}
+                </button>
+              </div>
+            </div>
+            {(relatedLoading || relatedError || relatedProducts.length > 0) && <section className="product-related">
+              <h3>{localizeText("Похожие товары", language)}</h3>
+              {relatedLoading && <p role="status">{localizeText("Загружаем похожие товары…", language)}</p>}
+              {relatedError && <p role="alert">{relatedError}</p>}
+              {relatedProducts.length > 0 && <div className="product-related-grid">
+                {relatedProducts.map((product) => (
+                  <button type="button" className="product-related-card" key={product.id} onClick={() => openProductDetails(product)}>
+                    {product.imageUrl && <img src={product.imageUrl} alt="" loading="lazy" />}
+                    <span>{productCardTitle(productTitle(product) || "")}</span>
+                    <b>{formatUzs(product.priceMinor)}</b>
+                  </button>
+                ))}
               </div>}
-              {productDetails.videos.length > 0 && <div className="product-detail-videos">
-                {productDetails.videos.map((video) => <video key={video} src={video} controls preload="none" aria-label="Видео товара" />)}
-              </div>}
-              {productDetails.skus.length > 0 && <div className="product-detail-skus">
-                <h3>Варианты товара</h3>
-                {productDetails.skus.slice(0, 24).map((sku, index) => {
-                  const properties = readRecords(sku.ae_sku_property_dtos)
-                    .map((property) => `${readString(property, "property_name", "sku_property_name", "prop_name")}: ${readString(property, "property_value", "sku_property_value", "prop_value")}`)
-                    .filter((value) => value !== ": ");
-                  const price = readString(sku, "offer_sale_price", "sku_price");
-                  const stock = readString(sku, "sku_available_stock");
-                  return <div className="product-detail-sku" key={readString(sku, "sku_id") || index}>
-                    <span>{properties.join(" · ") || `Вариант ${index + 1}`}</span>
-                    <b>{price ? `${price} USD` : "Цена не указана"}{stock ? ` · Остаток: ${stock}` : ""}</b>
-                  </div>;
-                })}
-              </div>}
-            </>}
+            </section>}
           </section>
         </div>
       )}
