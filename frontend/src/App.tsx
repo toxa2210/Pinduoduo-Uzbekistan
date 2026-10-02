@@ -542,7 +542,13 @@ export function App() {
     if (!authToken) return;
     setProfileBusy(true);
     try {
-      const updated = await api.auth.updateProfile(authToken, { ...profileForm, language });
+      const updated = await api.auth.updateProfile(authToken, {
+        name: profileForm.name,
+        phone: profileForm.phone,
+        city: profileForm.city,
+        address: profileForm.address,
+        language,
+      });
       setProfile(updated);
       setNotice("Профиль сохранён");
     } catch (error) {

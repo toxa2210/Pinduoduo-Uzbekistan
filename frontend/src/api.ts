@@ -26,6 +26,7 @@ export type ApiProduct = {
 export type ApiOption = { id: string; name: string; parentId: string | null };
 export type ProductList = { items: ApiProduct[]; page: number; limit: number; total: number; pages: number };
 export type ApiUser = { id: string; phone?: string | null; name?: string | null; email?: string | null; city?: string | null; address?: string | null; language?: string | null; role?: string };
+export type ApiProfileUpdate = Pick<ApiUser, "phone" | "name" | "city" | "address" | "language">;
 export type ApiOrder = {
   id: string;
   status: string;
@@ -173,7 +174,7 @@ export const api = {
   auth: {
     firebase: (idToken: string) => request<{ accessToken: string; user: ApiUser }>("/auth/firebase", { method: "POST", body: JSON.stringify({ idToken }) }),
     profile: (token: string) => request<ApiUser>("/auth/profile", { headers: { Authorization: `Bearer ${token}` } }),
-    updateProfile: (token: string, profile: Partial<ApiUser>) => request<ApiUser>("/auth/profile", { method: "PATCH", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(profile) }),
+    updateProfile: (token: string, profile: ApiProfileUpdate) => request<ApiUser>("/auth/profile", { method: "PATCH", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(profile) }),
   },
   categories: () => request<ApiCategory[]>("/categories"),
   products: (params: { search?: string; categoryId?: string; page?: number; limit?: number } = {}) => {
