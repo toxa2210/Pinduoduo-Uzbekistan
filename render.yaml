@@ -3,8 +3,7 @@ services:
     name: uriona-api
     runtime: node
     rootDir: backend
-    buildCommand: npm ci && npm run prisma:generate && npm run build
-    preDeployCommand: npm run prisma:migrate:deploy
+    buildCommand: npm ci && npm run prisma:generate && npm run prisma:migrate:deploy && npm run build
     startCommand: npm run start
     healthCheckPath: /api/v1/health
     envVars:
