@@ -37,6 +37,11 @@ export class AliexpressController {
     });
   }
 
+  @Get("dropshipping/recommendations")
+  dropshippingRecommendations() {
+    return this.aliexpress.dropshippingRecommendations();
+  }
+
   @Get("affiliate/products")
   hotProducts(@Query() params: Record<string, string>) {
     return this.aliexpress.hotProducts(params);

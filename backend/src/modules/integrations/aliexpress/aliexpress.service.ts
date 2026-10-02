@@ -352,6 +352,17 @@ export class AliexpressService {
     }, true);
   }
 
+  dropshippingRecommendations() {
+    return this.call("aliexpress.ds.recommend.feed.get", {
+      country: "UZ",
+      target_currency: "USD",
+      target_language: "RU",
+      feed_name: "DS bestseller",
+      page_size: 5,
+      page_no: 1
+    }, true);
+  }
+
   hotProducts(params: Record<string, unknown> = {}) {
     return this.call("aliexpress.affiliate.hotproduct.query", params);
   }
