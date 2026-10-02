@@ -21,6 +21,10 @@ export type ApiProduct = {
   priceMinor: number;
   status: string;
   imageUrl?: string | null;
+  rating?: string;
+  orders?: string;
+  originalPriceMinor?: number;
+  discountPercent?: number;
   category?: ApiCategory | null;
 };
 export type ApiOption = { id: string; name: string; parentId: string | null };
@@ -83,6 +87,22 @@ function firstString(...values: unknown[]): string {
   return value === undefined ? "" : String(value);
 }
 
+function marketplaceImageUrl(imageUrl: string | null): string | null {
+  if (!imageUrl) return null;
+  const normalized = imageUrl.startsWith("//") ? `https:${imageUrl}` : imageUrl;
+  try {
+    const url = new URL(normalized);
+    const isMarketplaceImage = ["alicdn.com", "aliexpress-media.com"].some(
+      (host) => url.hostname === host || url.hostname.endsWith(`.${host}`),
+    );
+    if (!isMarketplaceImage || !["http:", "https:"].includes(url.protocol)) return normalized;
+    url.protocol = "https:";
+    return `${API_BASE.replace(/\/$/, "")}/integrations/aliexpress/image?url=${encodeURIComponent(url.toString())}`;
+  } catch {
+    return normalized;
+  }
+}
+
 function findList(payload: unknown, keys: string[]): unknown[] {
   const visited = new Set<object>();
   const search = (value: unknown): unknown[] | null => {
@@ -116,16 +136,21 @@ export function mapMarketplaceGoods(payload: unknown, priceCurrency: "CNY" | "UZ
     );
     const hasMarketplacePrice = Boolean(rawPrice);
     const price = Number(rawPrice || 0);
-    const originalPrice = Number(goods.target_original_price ?? goods.targetOriginalPrice ?? goods.original_price ?? 0);
+    const originalPrice = Number(firstString(goods.target_original_price, goods.targetOriginalPrice, goods.original_price, goods.originalPrice) || 0);
     const rawDiscount = firstString(goods.coupon_discount, goods.discount);
     const discount = Number(rawDiscount.replace("%", "")) || (originalPrice > price ? originalPrice - price : 0);
+    const discountPercent = rawDiscount.includes("%")
+      ? Number(rawDiscount.replace("%", ""))
+      : originalPrice > price
+        ? Math.round(((originalPrice - price) / originalPrice) * 100)
+        : 0;
     const categoryIds = Array.isArray(goods.cat_ids) ? goods.cat_ids : [];
     const categoryId = firstString(goods.first_level_category_id, goods.category_id, goods.cat_id, goods.cateId, categoryIds[0], goods.goods_cat_id)
       .split(",")[0] || null;
     const title = firstString(goods.product_title, goods.goods_name, goods.goods_title, goods.title) || "Товар маркетплейса";
-    const description = firstString(goods.product_detail_url, goods.itemUrl, goods.goods_desc, goods.goods_description, goods.description);
+    const description = firstString(goods.goods_desc, goods.goods_description, goods.description);
     const imageUrls = asObject(goods.product_main_image_url);
-    const imageUrl = firstString(
+    const rawImageUrl = firstString(
       goods.product_main_image_url,
       goods.itemMainPic,
       goods.goods_thumbnail_url,
@@ -133,6 +158,7 @@ export function mapMarketplaceGoods(payload: unknown, priceCurrency: "CNY" | "UZ
       goods.image_url,
       imageUrls.string
     ) || null;
+    const imageUrl = marketplaceImageUrl(rawImageUrl);
     const product: ApiProduct = {
       id,
       categoryId,
@@ -144,6 +170,12 @@ export function mapMarketplaceGoods(payload: unknown, priceCurrency: "CNY" | "UZ
       priceMinor: Math.max(0, Math.round(price * (hasMarketplacePrice ? (priceCurrency === "UZS" ? 100 : CNY_TO_UZS * 100) : 1))),
       status: discount > 0 ? "sale" : "popular",
       imageUrl,
+      rating: firstString(goods.score, goods.evaluate_rate, goods.evaluateRate) || undefined,
+      orders: firstString(goods.orders, goods.order_count, goods.orderCount) || undefined,
+      ...(originalPrice > price ? {
+        originalPriceMinor: Math.round(originalPrice * (priceCurrency === "UZS" ? 100 : CNY_TO_UZS * 100)),
+        discountPercent,
+      } : {}),
     };
     return [product];
   });

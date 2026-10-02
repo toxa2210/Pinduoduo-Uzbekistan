@@ -121,9 +121,9 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
     uz: "Mahsulotni ushbu qurilmada saqlash uchun uning kartasidagi yurakchani bosing.",
   },
   "Найти товары": { en: "Find products", uz: "Mahsulotlarni topish" },
-  "В текущем каталоге Uriona AliExpress не передаёт данные продавцов, необходимые для подписки на магазин. Раздел заработает после подтверждения доступа к данным магазинов.": {
-    en: "The current URIONA catalog does not receive the seller data needed to follow stores from AliExpress. This section will be available once access to store data is approved.",
-    uz: "URIONA katalogi do‘konlarga obuna bo‘lish uchun kerakli AliExpress sotuvchi ma’lumotlarini olmayapti. Do‘kon ma’lumotlariga ruxsat berilgach, bu bo‘lim ishlaydi.",
+  "В каталоге пока нет данных продавцов, необходимых для подписки на магазин.": {
+    en: "Seller details needed to follow stores are not available in the catalog yet.",
+    uz: "Katalogda do‘konlarga obuna bo‘lish uchun sotuvchi ma’lumotlari hozircha mavjud emas.",
   },
   "Вернуться в каталог": { en: "Back to catalog", uz: "Katalogga qaytish" },
   "Язык интерфейса": { en: "Interface language", uz: "Interfeys tili" },
@@ -134,11 +134,10 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   "Каталог": { en: "Catalog", uz: "Katalog" },
   "Категории": { en: "Categories", uz: "Kategoriyalar" },
   "Все категории": { en: "All categories", uz: "Barcha kategoriyalar" },
-  "Категория AliExpress": { en: "AliExpress category", uz: "AliExpress kategoriyasi" },
+  "Категория": { en: "Category", uz: "Kategoriya" },
   "Категория каталога": { en: "Catalog category", uz: "Katalog kategoriyasi" },
   "Товары": { en: "Products", uz: "Mahsulotlar" },
   "Все товары": { en: "All products", uz: "Barcha mahsulotlar" },
-  "Категория": { en: "Category", uz: "Kategoriya" },
   "Скидка": { en: "Sale", uz: "Chegirma" },
   "Популярно": { en: "Popular", uz: "Ommabop" },
   "Новинка": { en: "New", uz: "Yangi" },
@@ -147,7 +146,9 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   "Подробнее": { en: "Details", uz: "Batafsil" },
   "Удалить из избранного": { en: "Remove from wishlist", uz: "Saralanganlardan olib tashlash" },
   "Добавить в избранное": { en: "Add to wishlist", uz: "Saralanganlarga qo‘shish" },
-  "Международный каталог": { en: "Global catalog", uz: "Xalqaro katalog" },
+  "Показать товары": { en: "View products", uz: "Mahsulotlarni ko‘rish" },
+  "Вернуться к категориям": { en: "Back to categories", uz: "Kategoriyalarga qaytish" },
+  "покупок": { en: "orders", uz: "ta xarid" },
   "Товары каталога URIONA": { en: "URIONA catalog products", uz: "URIONA katalogi mahsulotlari" },
   "Горячие товары": { en: "Trending products", uz: "Ommabop mahsulotlar" },
   "Показать всё": { en: "Show all", uz: "Barchasini ko‘rsatish" },
@@ -188,19 +189,19 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   },
   "Раздел помощи": { en: "Help center", uz: "Yordam bo‘limi" },
   "Почему каталог может быть недоступен?": { en: "Why might the catalog be unavailable?", uz: "Nega katalog ishlamasligi mumkin?" },
-  "Каталог зависит от разрешений AliExpress Open Platform. При отказе API Uriona показывает сообщение и кнопку повтора запроса.": {
-    en: "The catalog depends on AliExpress Open Platform permissions. If the API request fails, URIONA shows a message and a retry button.",
-    uz: "Katalog AliExpress Open Platform ruxsatlariga bog‘liq. API so‘rovi bajarilmasa, URIONA xabar va qayta urinish tugmasini ko‘rsatadi.",
+  "Если источник товаров временно не отвечает, Uriona покажет сообщение и кнопку повтора запроса.": {
+    en: "If the product source is temporarily unavailable, URIONA will show a message and a retry button.",
+    uz: "Mahsulotlar manbasi vaqtincha javob bermasa, Uriona xabar va qayta urinish tugmasini ko‘rsatadi.",
   },
   "Ташкент": { en: "Tashkent", uz: "Toshkent" },
   "Доставка в": { en: "Deliver to", uz: "Yetkazish manzili" },
   "Главное меню": { en: "Main menu", uz: "Asosiy menyu" },
   "Нижняя навигация": { en: "Bottom navigation", uz: "Quyi navigatsiya" },
   "Закрыть": { en: "Close", uz: "Yopish" },
-  "Товар AliExpress": { en: "AliExpress product", uz: "AliExpress mahsuloti" },
+  "Товар": { en: "Product", uz: "Mahsulot" },
   "Загружаем описание товара…": { en: "Loading product description…", uz: "Mahsulot tavsifi yuklanmoqda…" },
   "Описание не предоставлено API.": { en: "No description was provided by the API.", uz: "API mahsulot tavsifini taqdim etmadi." },
-  "Загружаем данные AliExpress…": { en: "Loading AliExpress data…", uz: "AliExpress ma’lumotlari yuklanmoqda…" },
+  "Загружаем сведения о товаре…": { en: "Loading product details…", uz: "Mahsulot tafsilotlari yuklanmoqda…" },
   "Статус": { en: "Status", uz: "Holat" },
   "ID категории": { en: "Category ID", uz: "Kategoriya ID raqami" },
   "Магазин": { en: "Store", uz: "Do‘kon" },
@@ -220,7 +221,6 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   "Добавьте товары из каталога и вернитесь сюда.": { en: "Add products from the catalog and come back here.", uz: "Katalogdan mahsulot qo‘shib, bu yerga qayting." },
   "Промокод": { en: "Promo code", uz: "Promo-kod" },
   "Применить": { en: "Apply", uz: "Qo‘llash" },
-  "Доставка от 1-3 дней": { en: "Delivery from 1–3 days", uz: "Yetkazib berish 1–3 kundan" },
   "Платежи": { en: "Payments", uz: "To‘lovlar" },
   "Готово к оплате местными картами и будущим провайдерам.": {
     en: "Ready for local bank cards and future payment providers.",
@@ -289,9 +289,9 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   },
   "Найти товары": { en: "Find products", uz: "Mahsulotlarni topish" },
   "Любимые магазины": { en: "Favorite stores", uz: "Sevimli do‘konlar" },
-  "В текущем каталоге Uriona AliExpress не передаёт данные продавцов, необходимые для подписки на магазин. Раздел заработает после подтверждения доступа к данным магазинов.": {
-    en: "The current URIONA catalog does not receive the seller data needed to follow stores from AliExpress. This section will be available once access to store data is approved.",
-    uz: "URIONA katalogi do‘konlarga obuna bo‘lish uchun kerakli AliExpress sotuvchi ma’lumotlarini olmayapti. Do‘kon ma’lumotlariga ruxsat berilgach, bu bo‘lim ishlaydi.",
+  "В каталоге пока нет данных продавцов, необходимых для подписки на магазин.": {
+    en: "Seller details needed to follow stores are not available in the catalog yet.",
+    uz: "Katalogda do‘konlarga obuna bo‘lish uchun sotuvchi ma’lumotlari hozircha mavjud emas.",
   },
   "Вернуться в каталог": { en: "Back to catalog", uz: "Katalogga qaytish" },
   "Язык интерфейса": { en: "Interface language", uz: "Interfeys tili" },
@@ -371,9 +371,9 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   "Помощь по Uriona": { en: "URIONA help", uz: "URIONA yordami" },
   "Частые вопросы": { en: "Frequently asked questions", uz: "Ko‘p so‘raladigan savollar" },
   "Как найти товар?": { en: "How do I find a product?", uz: "Mahsulotni qanday topaman?" },
-  "Откройте каталог и воспользуйтесь строкой поиска. Доступность реального каталога зависит от ответа AliExpress API.": {
-    en: "Open the catalog and use the search bar. Real catalog availability depends on the AliExpress API response.",
-    uz: "Katalogni ochib, qidiruv satridan foydalaning. Haqiqiy katalog mavjudligi AliExpress API javobiga bog‘liq.",
+  "Откройте каталог и воспользуйтесь строкой поиска. Если товары не загрузились, попробуйте позже.": {
+    en: "Open the catalog and use the search bar. If products do not load, please try again later.",
+    uz: "Katalogni ochib, qidiruv satridan foydalaning. Mahsulotlar yuklanmasa, keyinroq qayta urinib ko‘ring.",
   },
   "Где проверить заказ?": { en: "Where can I check my order?", uz: "Buyurtmani qayerdan tekshirish mumkin?" },
   "После оформления заказа его статус появится в разделе «Мои заказы» профиля.": {
@@ -434,7 +434,6 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
     uz: "Yordam xizmati aloqa ma’lumotlari hali sozlanmagan. Soxta telefon raqami yoki ishlamaydigan chat ko‘rsatilmaydi.",
   },
   "Доставка по Узбекистану": { en: "Delivery across Uzbekistan", uz: "O‘zbekiston bo‘ylab yetkazib berish" },
-  "Открыт международный каталог": { en: "Global catalog opened", uz: "Xalqaro katalog ochildi" },
   "Акции и скидки": { en: "Deals and discounts", uz: "Aksiya va chegirmalar" },
   "Поддержка открыта": { en: "Support opened", uz: "Yordam bo‘limi ochildi" },
   "Профиль открыт": { en: "Profile opened", uz: "Profil ochildi" },
@@ -505,9 +504,9 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   "Помощь по Uriona": { en: "URIONA help", uz: "URIONA yordami" },
   "Частые вопросы": { en: "Frequently asked questions", uz: "Ko‘p so‘raladigan savollar" },
   "Как найти товар?": { en: "How do I find a product?", uz: "Mahsulotni qanday topaman?" },
-  "Откройте каталог и воспользуйтесь строкой поиска. Доступность реального каталога зависит от ответа AliExpress API.": {
-    en: "Open the catalog and use the search bar. Real catalog availability depends on the AliExpress API response.",
-    uz: "Katalogni ochib, qidiruv satridan foydalaning. Haqiqiy katalog mavjudligi AliExpress API javobiga bog‘liq.",
+  "Откройте каталог и воспользуйтесь строкой поиска. Если товары не загрузились, попробуйте позже.": {
+    en: "Open the catalog and use the search bar. If products do not load, please try again later.",
+    uz: "Katalogni ochib, qidiruv satridan foydalaning. Mahsulotlar yuklanmasa, keyinroq qayta urinib ko‘ring.",
   },
   "Где проверить заказ?": { en: "Where can I check my order?", uz: "Buyurtmani qayerdan tekshirish mumkin?" },
   "После оформления заказа его статус появится в разделе «Мои заказы» профиля.": {
@@ -593,23 +592,23 @@ function localizeNode(node: ReactNode, language: Language): ReactNode {
 const translations = {
   ru: {
     home: "Главная", categories: "Категории", cart: "Корзина", profile: "Профиль", catalog: "Каталог",
-    global: "Международный каталог", sales: "Скидки", how: "Как заказать", delivery: "Доставка", support: "Поддержка",
+    sales: "Скидки", how: "Как заказать", delivery: "Доставка", support: "Поддержка",
     search: "Ищите товары и бренды", profileOpen: "Профиль открыт", cartOpen: "Корзина открыта", start: "Начать покупки",
     heroTitle: "Мировые товары", heroAccent: "по честной цене", heroText: "Выбираем товары у проверенных продавцов и доставляем их в Узбекистан.",
     safe: "Безопасная оплата", deliveryUz: "Доставка в Узбекистан", categoriesQuick: "Быстрый выбор", allCategories: "Все категории",
     best: "Лучшие предложения", popular: "Популярные товары", forYou: "Случайная подборка для вас",
     searchResults: (query: string) => `Товары по запросу «${query}»`, seeAll: "Смотреть всё", payments: "Платежи", shipping: "Доставка",
-    catalogPdd: "Категория AliExpress", all: "Все категории", tags: "Все теги", goods: "Товары", allGoods: "Все товары",
-    add: "Добавить", buy: "Купить", details: "Подробнее", loading: "Загружаем товары AliExpress...", noGoods: "Реальные товары не найдены.",
+    catalogPdd: "Категория", all: "Все категории", tags: "Все теги", goods: "Товары", allGoods: "Все товары",
+    add: "Добавить", buy: "Купить", details: "Подробнее", loading: "Загружаем товары...", noGoods: "Товары не найдены.",
     lang: "Язык", light: "Светлая тема", dark: "Тёмная тема", loadingCatalog: "Загружаем каталог", apiError: "Ошибка каталога",
-    china: "Международный каталог", hot: "Горячие товары", showAll: "Показать всё", sale: "Акции недели", discount: "Скидка",
+    sale: "Акции недели", discount: "Скидка",
     emptyCart: "Корзина пуста", addFromCatalog: "Добавьте товары из каталога и вернитесь сюда.", shop: "К покупкам",
     retry: "Повторить",
     emptyCategories: "Категории пока не загружены.", localCatalogLabel: "Каталог URIONA",
-    localCatalogNote: "Показаны товары из каталога URIONA. Данные AliExpress сейчас недоступны.",
-    affiliatePermissionError: "AliExpress пока не разрешил приложению доступ к каталогу товаров. Проверьте права Affiliate API в Open Platform.",
+    localCatalogNote: "Показаны товары из каталога URIONA. Данные каталога сейчас недоступны.",
+    affiliatePermissionError: "Каталог товаров временно недоступен. Попробуйте позже.",
     dropshippingAuthorizationError: "Для подробностей товара не подключена авторизация Dropshipping API.",
-    dropshippingPermissionError: "У приложения нет разрешения Dropshipping API для поиска и просмотра товаров.",
+    dropshippingPermissionError: "Поиск товаров временно недоступен. Попробуйте позже.",
     catalogUnavailable: "Не удалось загрузить каталог. Проверьте подключение и попробуйте позже.",
     detailsUnavailable: "Не удалось получить подробности товара. Попробуйте позже.",
     localCatalogUnavailable: "Локальный каталог также временно недоступен.",
@@ -617,23 +616,23 @@ const translations = {
   },
   en: {
     home: "Home", categories: "Categories", cart: "Cart", profile: "Profile", catalog: "Catalog",
-    global: "Global catalog", sales: "Deals", how: "How to order", delivery: "Delivery", support: "Support",
+    sales: "Deals", how: "How to order", delivery: "Delivery", support: "Support",
     search: "Search products and brands", profileOpen: "Profile opened", cartOpen: "Cart opened", start: "Start shopping",
     heroTitle: "Global products", heroAccent: "at a fair price", heroText: "We select products from trusted sellers and deliver them to Uzbekistan.",
     safe: "Secure payment", deliveryUz: "Delivery to Uzbekistan", categoriesQuick: "Quick pick", allCategories: "All categories",
     best: "Best offers", popular: "Popular products", forYou: "A random selection for you",
     searchResults: (query: string) => `Products for “${query}”`, seeAll: "View all", payments: "Payments", shipping: "Delivery",
-    catalogPdd: "AliExpress category", all: "All categories", tags: "All tags", goods: "Products", allGoods: "All products",
-    add: "Add", buy: "Buy", details: "Details", loading: "Loading AliExpress products...", noGoods: "No real products found.",
+    catalogPdd: "Category", all: "All categories", tags: "All tags", goods: "Products", allGoods: "All products",
+    add: "Add", buy: "Buy", details: "Details", loading: "Loading products...", noGoods: "No products found.",
     lang: "Language", light: "Light theme", dark: "Dark theme", loadingCatalog: "Loading catalog", apiError: "Catalog error",
-    china: "Global catalog", hot: "Trending products", showAll: "Show all", sale: "Weekly deals", discount: "Sale",
+    sale: "Weekly deals", discount: "Sale",
     emptyCart: "Your cart is empty", addFromCatalog: "Add products from the catalog and come back here.", shop: "Start shopping",
     retry: "Retry",
     emptyCategories: "Categories are not available yet.", localCatalogLabel: "URIONA catalog",
-    localCatalogNote: "Showing products saved in the URIONA catalog. AliExpress data is currently unavailable.",
-    affiliatePermissionError: "AliExpress has not granted this app access to its product catalog. Check Affiliate API permissions in Open Platform.",
+    localCatalogNote: "Showing products saved in the URIONA catalog. Catalog data is currently unavailable.",
+    affiliatePermissionError: "The product catalog is temporarily unavailable. Please try again later.",
     dropshippingAuthorizationError: "Dropshipping API authorization is not connected for product details.",
-    dropshippingPermissionError: "This app does not have Dropshipping API permission to search for and view products.",
+    dropshippingPermissionError: "Product search is temporarily unavailable. Please try again later.",
     catalogUnavailable: "Could not load the catalog. Check your connection and try again later.",
     detailsUnavailable: "Could not load product details. Try again later.",
     localCatalogUnavailable: "The local catalog is also temporarily unavailable.",
@@ -641,23 +640,23 @@ const translations = {
   },
   uz: {
     home: "Bosh sahifa", categories: "Kategoriyalar", cart: "Savat", profile: "Profil", catalog: "Katalog",
-    global: "Xalqaro katalog", sales: "Chegirmalar", how: "Qanday buyurtma berish", delivery: "Yetkazib berish", support: "Yordam",
+    sales: "Chegirmalar", how: "Qanday buyurtma berish", delivery: "Yetkazib berish", support: "Yordam",
     search: "Mahsulot va brendlarni qidiring", profileOpen: "Profil ochildi", cartOpen: "Savat ochildi", start: "Xaridni boshlash",
     heroTitle: "Dunyo mahsulotlari", heroAccent: "halol narxda", heroText: "Ishonchli sotuvchilardan mahsulotlarni tanlaymiz va O‘zbekistonga yetkazamiz.",
     safe: "Xavfsiz to‘lov", deliveryUz: "O‘zbekistonga yetkazib berish", categoriesQuick: "Tezkor tanlov", allCategories: "Barcha kategoriyalar",
     best: "Eng yaxshi takliflar", popular: "Mashhur mahsulotlar", forYou: "Siz uchun tasodifiy tanlov",
     searchResults: (query: string) => `“${query}” so‘rovi bo‘yicha mahsulotlar`, seeAll: "Barchasini ko‘rish", payments: "To‘lovlar", shipping: "Yetkazib berish",
-    catalogPdd: "AliExpress kategoriyasi", all: "Barcha kategoriyalar", tags: "Barcha teglar", goods: "Mahsulotlar", allGoods: "Barcha mahsulotlar",
-    add: "Qo‘shish", buy: "Sotib olish", details: "Batafsil", loading: "AliExpress mahsulotlari yuklanmoqda...", noGoods: "Haqiqiy mahsulotlar topilmadi.",
+    catalogPdd: "Kategoriya", all: "Barcha kategoriyalar", tags: "Barcha teglar", goods: "Mahsulotlar", allGoods: "Barcha mahsulotlar",
+    add: "Qo‘shish", buy: "Sotib olish", details: "Batafsil", loading: "Mahsulotlar yuklanmoqda...", noGoods: "Mahsulotlar topilmadi.",
     lang: "Til", light: "Yorug‘ rejim", dark: "Qorong‘i rejim", loadingCatalog: "Katalog yuklanmoqda", apiError: "Katalog xatosi",
-    china: "Xalqaro katalog", hot: "Ommabop mahsulotlar", showAll: "Barchasini ko‘rsatish", sale: "Haftalik chegirmalar", discount: "Chegirma",
+    sale: "Haftalik chegirmalar", discount: "Chegirma",
     emptyCart: "Savat bo‘sh", addFromCatalog: "Katalogdan mahsulot qo‘shing va bu yerga qayting.", shop: "Xaridga o‘tish",
     retry: "Qayta urinish",
     emptyCategories: "Kategoriyalar hozircha mavjud emas.", localCatalogLabel: "URIONA katalogi",
-    localCatalogNote: "URIONA katalogida saqlangan mahsulotlar ko‘rsatilmoqda. AliExpress ma’lumotlari hozir mavjud emas.",
-    affiliatePermissionError: "AliExpress ilovaga mahsulot katalogidan foydalanishga ruxsat bermagan. Open Platform'da Affiliate API huquqlarini tekshiring.",
+    localCatalogNote: "URIONA katalogida saqlangan mahsulotlar ko‘rsatilmoqda. Katalog ma’lumotlari hozir mavjud emas.",
+    affiliatePermissionError: "Mahsulotlar katalogi vaqtincha ishlamayapti. Keyinroq qayta urinib ko‘ring.",
     dropshippingAuthorizationError: "Mahsulot tafsilotlari uchun Dropshipping API avtorizatsiyasi ulanmagan.",
-    dropshippingPermissionError: "Ilovada mahsulotlarni qidirish va ko‘rish uchun Dropshipping API ruxsati yo‘q.",
+    dropshippingPermissionError: "Mahsulot qidiruvi vaqtincha ishlamayapti. Keyinroq qayta urinib ko‘ring.",
     catalogUnavailable: "Katalogni yuklab bo‘lmadi. Ulanishni tekshirib, keyinroq qayta urinib ko‘ring.",
     detailsUnavailable: "Mahsulot tafsilotlarini yuklab bo‘lmadi. Keyinroq qayta urinib ko‘ring.",
     localCatalogUnavailable: "Mahalliy katalog ham vaqtincha ishlamayapti.",
@@ -667,7 +666,6 @@ const translations = {
 type View =
   | (typeof navItems)[number]
   | "Каталог"
-  | "Международный каталог"
   | "Скидки"
   | "Как заказать"
   | "Доставка"
@@ -679,7 +677,6 @@ const LogoMark = ({ className = "" }: { className?: string }) => (
 
 const topMenuItems = [
   { label: "Каталог", view: "Каталог" as View, message: "Каталог открыт" },
-  { label: "Международный каталог", view: "Международный каталог" as View, message: "Открыт международный каталог" },
   { label: "Скидки", view: "Скидки" as View, message: "Акции и скидки" },
   { label: "Как заказать", view: "Как заказать" as View, message: "Как заказать" },
   { label: "Доставка", view: "Доставка" as View, message: "Доставка по Узбекистану" },
@@ -1052,6 +1049,15 @@ export function App() {
   }, [detailProduct, detailAttempt]);
 
   useEffect(() => {
+    if ((view === "Категории" || view === "Каталог") && selectedCat === "all" && !search.trim()) {
+      setProducts([]);
+      setLiveCatalog(false);
+      setCatalogLoading(false);
+      setCatalogError("");
+      setCatalogSource("loading");
+      return;
+    }
+
     let active = true;
     setCatalogLoading(true);
     setCatalogError("");
@@ -1214,9 +1220,7 @@ export function App() {
   const catalogMessage = catalogLoading
     ? text.loading
     : catalogError || (visibleProducts.length === 0 ? text.noGoods : "");
-  const hotProducts = products.filter((product) => product.status === "popular" || product.status === "sale");
   const saleProducts = products.filter((product) => product.status === "sale");
-  const hotMessage = catalogLoading ? text.loading : catalogError || (hotProducts.length === 0 ? text.noGoods : "");
   const saleMessage = catalogLoading ? text.loading : catalogError || (saleProducts.length === 0 ? text.noGoods : "");
 
   const cartEntryList = knownProducts.filter((product) => cartItems[product.id]);
@@ -1238,21 +1242,21 @@ export function App() {
   const categoryUiLabel = (key: "count" | "search" | "clearSearch" | "all" | "back" | "select" | "selected" | "subcategories" | "noResults", count = 0) => {
     const labels = {
       ru: {
-        count: `Категорий: ${count}`, search: "Поиск по всем категориям AliExpress", all: "Все 548 категорий",
+        count: `Категорий: ${count}`, search: "Поиск по категориям", all: "Все 548 категорий",
         clearSearch: "Очистить поиск",
-        back: "Назад", select: "Выбрать категорию", selected: "Выбрана", subcategories: `Подкатегорий: ${count}`,
+        back: "Назад", select: "Показать товары", selected: "Выбрана", subcategories: `Подкатегорий: ${count}`,
         noResults: "Категории не найдены",
       },
       en: {
-        count: `Categories: ${count}`, search: "Search all AliExpress categories", all: "All 548 categories",
+        count: `Categories: ${count}`, search: "Search categories", all: "All 548 categories",
         clearSearch: "Clear search",
-        back: "Back", select: "Select category", selected: "Selected", subcategories: `Subcategories: ${count}`,
+        back: "Back", select: "View products", selected: "Selected", subcategories: `Subcategories: ${count}`,
         noResults: "No categories found",
       },
       uz: {
-        count: `Kategoriyalar: ${count}`, search: "Barcha AliExpress kategoriyalaridan qidirish", all: "Barcha 548 kategoriya",
+        count: `Kategoriyalar: ${count}`, search: "Kategoriyalarni qidirish", all: "Barcha 548 kategoriya",
         clearSearch: "Qidiruvni tozalash",
-        back: "Orqaga", select: "Kategoriyani tanlash", selected: "Tanlangan", subcategories: `Quyi kategoriyalar: ${count}`,
+        back: "Orqaga", select: "Mahsulotlarni ko‘rish", selected: "Tanlangan", subcategories: `Quyi kategoriyalar: ${count}`,
         noResults: "Kategoriyalar topilmadi",
       },
     } as const;
@@ -1274,6 +1278,24 @@ export function App() {
     setLiked((items) => isSaved ? items.filter((id) => id !== productId) : [...items, productId]);
     setNotice(isSaved ? "Товар удалён из избранного" : "Товар добавлен в избранное");
   };
+
+  const renderProductStats = (product: ApiProduct) => (product.rating || product.orders) && (
+    <div className="product-stats">
+      {product.rating && <span><Star size={13} fill="currentColor" />{product.rating}</span>}
+      {product.orders && <span>{product.orders} {localizeText("покупок", language)}</span>}
+    </div>
+  );
+  const renderProductPrice = (product: ApiProduct) => (
+    <div className="product-prices">
+      <strong>{formatUzs(product.priceMinor)}</strong>
+      {product.originalPriceMinor && (
+        <span className="product-original-price">
+          <del>{formatUzs(product.originalPriceMinor)}</del>
+          {product.discountPercent ? <small>-{product.discountPercent}%</small> : null}
+        </span>
+      )}
+    </div>
+  );
 
   const openProductDetails = (product: ApiProduct) => {
     setDetailProduct(product);
@@ -1471,7 +1493,7 @@ export function App() {
           <div className="hero-visual">
             <ShoppingBag size={72} />
             <strong>{text.catalog}</strong>
-            <small>{catalogLoading ? text.loadingCatalog : catalogError ? text.apiError : liveCatalog ? "AliExpress" : catalogSource === "local" ? text.localCatalogLabel : text.noGoods}</small>
+            <small>{catalogLoading ? text.loadingCatalog : catalogError ? text.apiError : liveCatalog ? "Каталог готов" : catalogSource === "local" ? text.localCatalogLabel : text.noGoods}</small>
           </div>
         </div>
       </section>
@@ -1517,7 +1539,6 @@ export function App() {
         <div className="product-grid">
           {catalogMessage ? renderCatalogState(catalogMessage, Boolean(catalogError)) : visibleProducts.slice(0, 8).map((product, index) => {
             const isLiked = liked.includes(product.id);
-            const price = formatUzs(product.priceMinor);
             const tag = product.status === "sale" ? "Скидка" : product.status === "popular" ? "Популярно" : "Новинка";
 
             return (
@@ -1538,13 +1559,11 @@ export function App() {
                 <div className="product-body">
                   <span className="product-category">{categoryLabel(product.category) || "Категория"}</span>
                   <h3>{productTitle(product)}</h3>
-                  <p>{productDescription(product)}</p>
-                  {catalogSource === "aliexpress" && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>Подробнее</button>}
+                  {productDescription(product) && <p>{productDescription(product)}</p>}
+                  {liveCatalog && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>Подробнее</button>}
+                  {renderProductStats(product)}
                   <div className="price-row">
-                    <div>
-                      <strong>{price}</strong>
-                      <small>Доставка от 1-3 дней</small>
-                    </div>
+                    {renderProductPrice(product)}
                     <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}>
                       <ShoppingBag size={14} />Купить
                     </button>
@@ -1581,6 +1600,29 @@ export function App() {
         <span className="category-total">{categoryUiLabel("count", categories.length)}</span>
       </div>
 
+      {selectedCat !== "all" && (
+        <div className="section-head panel-head selected-category-heading">
+          <div>
+            <small>{localizeText("Товары", language)}</small>
+            <h2>{categoryLabel(categories.find((item) => item.id === selectedCat))}</h2>
+          </div>
+          <button
+            type="button"
+            className="category-back-btn"
+            onClick={() => {
+              setSelectedCat("all");
+              setCategoryParentId(null);
+              setCategorySearch("");
+              setSearch("");
+            }}
+          >
+            {localizeText("Вернуться к категориям", language)}
+          </button>
+        </div>
+      )}
+
+      {selectedCat === "all" && !search.trim() && (
+        <>
       <div className="category-browser-controls">
         <label className="category-search">
           <Search size={17} />
@@ -1641,6 +1683,7 @@ export function App() {
                 className="category-select-btn"
                 onClick={() => {
                   setSelectedCat(category.id);
+                  if (categorySearch) setCategorySearch("");
                   setNotice(`${categoryLabel(category)} активна`);
                 }}
               >
@@ -1653,22 +1696,33 @@ export function App() {
           <p className="category-empty-state" role="status">{categorySearch ? categoryUiLabel("noResults") : text.emptyCategories}</p>
         )}
       </div>
+        </>
+      )}
 
-      {products.length === 0 ? (
+      {(selectedCat !== "all" || Boolean(search.trim())) && products.length === 0 ? (
         <div className="catalog-products-state">
           {renderCatalogState(
             catalogLoading ? text.loading : catalogError || text.noGoods,
             !catalogLoading && Boolean(catalogError)
           )}
         </div>
-      ) : products.length > 0 ? (
+      ) : (selectedCat !== "all" || Boolean(search.trim())) && products.length > 0 ? (
         <>
-          <div className="section-head panel-head">
-            <div>
-              <small>Товары</small>
-              <h2>{selectedCat === "all" ? "Все товары" : categoryLabel(categories.find((item) => item.id === selectedCat))}</h2>
+          {selectedCat === "all" && (
+            <div className="section-head panel-head">
+              <div>
+                <small>Товары</small>
+                <h2>{text.searchResults(search.trim())}</h2>
+              </div>
+              <button
+                type="button"
+                className="category-back-btn"
+                onClick={() => setSearch("")}
+              >
+                {localizeText("Вернуться к категориям", language)}
+              </button>
             </div>
-          </div>
+          )}
           {catalogSource === "local" && <p className="catalog-source-note" role="status">{text.localCatalogNote}</p>}
           <div className="product-grid compact-grid">
             {catalogMessage ? renderCatalogState(catalogMessage, Boolean(catalogError)) : visibleProducts.map((product, index) => (
@@ -1683,9 +1737,10 @@ export function App() {
                 <div className="product-body">
                   <span className="product-category">{categoryLabel(product.category)}</span>
                   <h3>{productTitle(product)}</h3>
-                  {catalogSource === "aliexpress" && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>Подробнее</button>}
+                  {liveCatalog && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>Подробнее</button>}
+                  {renderProductStats(product)}
                   <div className="price-row">
-                    <strong>{formatUzs(product.priceMinor)}</strong>
+                    {renderProductPrice(product)}
                     <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}><Plus size={14} />Добавить</button>
                   </div>
                 </div>
@@ -1694,39 +1749,6 @@ export function App() {
           </div>
         </>
       ) : null}
-    </section>
-  );
-
-  const renderChinaGoods = () => (
-    <section className="screen-panel">
-      <div className="section-head panel-head">
-        <div>
-          <small>{catalogSource === "local" ? text.localCatalogLabel : "Международный каталог"}</small>
-          <h2>{catalogSource === "local" ? "Товары каталога URIONA" : "Горячие товары"}</h2>
-        </div>
-        <button type="button" onClick={() => setSelectedCat("all")}>Показать всё</button>
-      </div>
-
-      {catalogSource === "local" && <p className="catalog-source-note" role="status">{text.localCatalogNote}</p>}
-      <div className="product-grid compact-grid">
-        {hotMessage ? renderCatalogState(hotMessage, Boolean(catalogError)) : hotProducts.map((product, index) => (
-            <article key={product.id} className="product-card compact-card">
-              <div className={`product-media media-${index % 5}`}>
-                {product.imageUrl && <img src={product.imageUrl} alt={productTitle(product) || ""} loading="lazy" />}
-                <span className="product-tag">{product.status === "sale" ? "Скидка" : "Популярно"}</span>
-              </div>
-              <div className="product-body">
-                <span className="product-category">{categoryLabel(product.category)}</span>
-                <h3>{productTitle(product)}</h3>
-                {catalogSource === "aliexpress" && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>Подробнее</button>}
-                <div className="price-row">
-                  <strong>{formatUzs(product.priceMinor)}</strong>
-                  <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}><Plus size={14} />Добавить</button>
-                </div>
-              </div>
-            </article>
-          ))}
-      </div>
     </section>
   );
 
@@ -1755,7 +1777,8 @@ export function App() {
             <div className="product-body">
               <span className="product-category">{categoryLabel(product.category)}</span>
               <h3>{productTitle(product)}</h3>
-              {catalogSource === "aliexpress" && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>Подробнее</button>}
+              {liveCatalog && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>Подробнее</button>}
+              {renderProductStats(product)}
               <div className="price-row">
                 <strong>{formatUzs(product.priceMinor)}</strong>
                 <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}><Plus size={14} />Купить</button>
@@ -1819,7 +1842,7 @@ export function App() {
       <div className="profile-help">
         <details><summary>Как оформить заказ?</summary><p>Добавьте доступные товары в корзину и перейдите к оформлению. Сейчас оформление и приём оплаты ещё не подключены.</p></details>
         <details><summary>Где посмотреть статус заказа?</summary><p>Статус оформленного заказа будет доступен в профиле, в разделе «Мои заказы».</p></details>
-        <details><summary>Почему каталог может быть недоступен?</summary><p>Каталог зависит от разрешений AliExpress Open Platform. При отказе API Uriona показывает сообщение и кнопку повтора запроса.</p></details>
+        <details><summary>Почему каталог может быть недоступен?</summary><p>Если источник товаров временно не отвечает, Uriona покажет сообщение и кнопку повтора запроса.</p></details>
         <div className="profile-help-actions">
           <button type="button" className="secondary-btn" onClick={() => goTo("Профиль")}>Открыть профиль</button>
           <button type="button" className="secondary-btn" onClick={() => goTo("Корзина")}>Открыть корзину</button>
@@ -2025,7 +2048,7 @@ export function App() {
                 ))}</div> : <div className="profile-empty"><Heart size={30} /><h3>Избранное пока пусто</h3><p>Нажимайте на сердечко в карточке товара — товары сохранятся на этом устройстве.</p><button type="button" className="secondary-btn" onClick={() => goTo("Каталог")}>Найти товары</button></div>}
                 {unavailableFavorites > 0 && <p className="profile-hint">{unavailableFavorites} сохранённых товаров сейчас отсутствуют в локальном каталоге. Когда каталог загрузится, они появятся здесь.</p>}
               </>}
-              {profileSection === "stores" && <div className="profile-empty"><Store size={30} /><h3>Любимые магазины</h3><p>В текущем каталоге Uriona AliExpress не передаёт данные продавцов, необходимые для подписки на магазин. Раздел заработает после подтверждения доступа к данным магазинов.</p><button type="button" className="secondary-btn" onClick={() => goTo("Каталог")}>Вернуться в каталог</button></div>}
+              {profileSection === "stores" && <div className="profile-empty"><Store size={30} /><h3>Любимые магазины</h3><p>В каталоге пока нет данных продавцов, необходимых для подписки на магазин.</p><button type="button" className="secondary-btn" onClick={() => goTo("Каталог")}>Вернуться в каталог</button></div>}
               {profileSection === "reviews" && <div className="profile-empty"><Star size={30} /><h3>Мои отзывы</h3><p>Отзывы можно оставить после доставки заказа. Публикация и хранение отзывов пока не подключены.</p><button type="button" className="secondary-btn" onClick={() => setProfileSection("orders")}>Мои заказы</button></div>}
               {profileSection === "questions" && <div className="profile-empty"><HelpCircle size={30} /><h3>Вопросы и ответы</h3><p>Вопросы продавцам и история ответов пока не подключены: для этого нужен разрешённый API продавцов и отдельный раздел товара.</p><button type="button" className="secondary-btn" onClick={() => goTo("Поддержка")}>Открыть справку</button></div>}
               {profileSection === "coupons" && <div className="profile-coupon">
@@ -2054,7 +2077,7 @@ export function App() {
               </>}
               {profileSection === "support" && <div className="profile-help">
                 <div className="profile-section-heading"><div><small>Помощь по Uriona</small><h3>Частые вопросы</h3></div><MessageCircle size={22} /></div>
-                <details><summary>Как найти товар?</summary><p>Откройте каталог и воспользуйтесь строкой поиска. Доступность реального каталога зависит от ответа AliExpress API.</p></details>
+                <details><summary>Как найти товар?</summary><p>Откройте каталог и воспользуйтесь строкой поиска. Если товары не загрузились, попробуйте позже.</p></details>
                 <details><summary>Где проверить заказ?</summary><p>После оформления заказа его статус появится в разделе «Мои заказы» профиля.</p></details>
                 <details><summary>Как сохранить товар?</summary><p>Нажмите на значок сердца на карточке товара. Избранное сохраняется в браузере на этом устройстве.</p></details>
                 <details><summary>Как связаться с поддержкой?</summary><p>Контактный канал поддержки Uriona ещё не настроен. Мы не показываем фиктивный телефон или неработающий чат.</p></details>
@@ -2072,7 +2095,6 @@ export function App() {
     if (view === "Главная") return renderHome();
     if (view === "Категории") return renderCatalog();
     if (view === "Каталог") return renderCatalog();
-    if (view === "Международный каталог") return renderChinaGoods();
     if (view === "Скидки") return renderSales();
     if (view === "Как заказать") return renderHowToOrder();
     if (view === "Доставка") return renderDelivery();
@@ -2137,7 +2159,7 @@ export function App() {
                 goTo(item.view, item.message);
               }}
             >
-              {item.view === "Каталог" ? text.catalog : item.view === "Международный каталог" ? text.global : item.view === "Скидки" ? text.sales : item.view === "Как заказать" ? text.how : item.view === "Доставка" ? text.delivery : text.support}
+              {item.view === "Каталог" ? text.catalog : item.view === "Скидки" ? text.sales : item.view === "Как заказать" ? text.how : item.view === "Доставка" ? text.delivery : text.support}
             </button>
           ))}
         </nav>
@@ -2150,12 +2172,11 @@ export function App() {
           <section className="product-dialog" role="dialog" aria-modal="true" aria-labelledby="product-dialog-title">
             <button type="button" className="product-dialog-close" onClick={() => setDetailProduct(null)} aria-label="Закрыть"><X size={20} /></button>
             {(productDetails?.images[0] || detailProduct.imageUrl) && <img className="product-dialog-image" src={productDetails?.images[0] || detailProduct.imageUrl || undefined} alt={productDetails?.subject || productTitle(detailProduct) || ""} />}
-            <small>{productDetails?.categoryId ? localizeText("Товар AliExpress", language) : categoryLabel(detailProduct.category) || localizeText("Товар AliExpress", language)}</small>
+            <small>{categoryLabel(detailProduct.category) || localizeText("Товар", language)}</small>
             <h2 id="product-dialog-title">{productDetails?.subject || productTitle(detailProduct)}</h2>
             <p>{productDetails?.description || productDescription(detailProduct) || (detailLoading ? "Загружаем описание товара…" : "Описание не предоставлено API.")}</p>
             <strong>{formatUzs(detailProduct.priceMinor)}</strong>
-            <code>product_id: {detailProduct.id}</code>
-            {detailLoading && <p className="product-detail-state" role="status">Загружаем данные AliExpress…</p>}
+            {detailLoading && <p className="product-detail-state" role="status">{localizeText("Загружаем сведения о товаре…", language)}</p>}
             {detailError && <div className="product-detail-state" role="alert"><span>{detailError}</span><button type="button" onClick={() => setDetailAttempt((attempt) => attempt + 1)}>Повторить</button></div>}
             {productDetails && <>
               <dl className="product-detail-meta">

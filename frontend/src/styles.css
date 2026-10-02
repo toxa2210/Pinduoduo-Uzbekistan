@@ -560,6 +560,26 @@ input {
   font-size: 12px;
   font-weight: 700;
 }
+.selected-category-heading {
+  margin-top: 20px;
+}
+.product-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 9px;
+  color: #6F7378;
+  font-size: 12px;
+}
+.product-stats span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.product-stats svg {
+  color: #f59e0b;
+}
 .category-empty-state {
   grid-column: 1 / -1;
   color: var(--muted);
@@ -687,6 +707,23 @@ input {
   display: block;
   font-size: 1.15rem;
   line-height: 1.2;
+}
+.product-prices {
+  min-width: 0;
+}
+.product-original-price {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: #6F7378;
+  font-size: 11px;
+}
+.product-original-price small {
+  margin: 0;
+  color: #d93025;
+  font-size: 11px;
+  font-weight: 700;
 }
 .price-row small {
   display: block;
