@@ -310,7 +310,14 @@ export class AliexpressService {
       key !== "error_response" && key.endsWith("_response") && value && typeof value === "object"
     )?.[1] as Record<string, unknown> | undefined;
     const nestedError = methodResponse?.error_response;
-    const hasError = Boolean(data.error_response || data.error_code || nestedError || methodResponse?.error_code);
+    const responseCode = methodResponse?.code;
+    const hasError = Boolean(
+      data.error_response
+      || data.error_code
+      || nestedError
+      || methodResponse?.error_code
+      || (responseCode !== undefined && !["0", "200"].includes(String(responseCode)))
+    );
     if (!response.ok || hasError) {
       const error = data.error_response && typeof data.error_response === "object"
         ? data.error_response as Record<string, unknown>
@@ -373,6 +380,50 @@ export class AliexpressService {
     return this.call("aliexpress.ds.category.get", {
       ...(categoryId ? { categoryId } : {}),
       language
+    }, true);
+  }
+
+  dropshippingProducts(params: {
+    keyWord?: string;
+    categoryId?: string;
+    pageIndex?: string;
+    pageSize?: string;
+    sortBy?: string;
+    currency?: string;
+  }) {
+    const keyWord = params.keyWord?.trim();
+    if (keyWord && keyWord.length > 100) {
+      throw new BadRequestException("keyWord must be 100 characters or fewer");
+    }
+    if (params.categoryId && !/^\d+$/.test(params.categoryId)) {
+      throw new BadRequestException("categoryId must be a numeric AliExpress category ID");
+    }
+    const pageIndex = params.pageIndex === undefined ? 1 : Number(params.pageIndex);
+    if (!Number.isInteger(pageIndex) || pageIndex < 1) {
+      throw new BadRequestException("pageIndex must be a positive integer");
+    }
+    const pageSize = params.pageSize === undefined ? 20 : Number(params.pageSize);
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 20) {
+      throw new BadRequestException("pageSize must be an integer between 1 and 20");
+    }
+    const sortBy = params.sortBy ?? "orders,desc";
+    if (!["min_price,asc", "min_price,desc", "orders,asc", "orders,desc", "comments,asc", "comments,desc"].includes(sortBy)) {
+      throw new BadRequestException("sortBy is not supported by the AliExpress Dropshipping search API");
+    }
+    const currency = params.currency ?? "USD";
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      throw new BadRequestException("currency must be a three-letter uppercase currency code");
+    }
+
+    return this.call("aliexpress.ds.text.search", {
+      ...(keyWord ? { keyWord } : {}),
+      ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+      local: "en_US",
+      countryCode: "UZ",
+      pageSize,
+      pageIndex,
+      sortBy,
+      currency
     }, true);
   }
 

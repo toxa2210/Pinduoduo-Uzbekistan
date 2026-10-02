@@ -50,6 +50,25 @@ export class AliexpressController {
     return this.aliexpress.dropshippingCategories(categoryId, language);
   }
 
+  @Get("dropshipping/products")
+  dropshippingProducts(
+    @Query("keyWord") keyWord?: string,
+    @Query("categoryId") categoryId?: string,
+    @Query("pageIndex") pageIndex?: string,
+    @Query("pageSize") pageSize?: string,
+    @Query("sortBy") sortBy?: string,
+    @Query("currency") currency?: string
+  ) {
+    return this.aliexpress.dropshippingProducts({
+      keyWord,
+      categoryId,
+      pageIndex,
+      pageSize,
+      sortBy,
+      currency
+    });
+  }
+
   @Get("affiliate/products")
   hotProducts(@Query() params: Record<string, string>) {
     return this.aliexpress.hotProducts(params);
