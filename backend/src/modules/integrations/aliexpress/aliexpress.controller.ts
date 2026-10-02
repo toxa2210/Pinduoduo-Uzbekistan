@@ -42,6 +42,14 @@ export class AliexpressController {
     return this.aliexpress.dropshippingRecommendations();
   }
 
+  @Get("dropshipping/categories")
+  dropshippingCategories(
+    @Query("categoryId") categoryId?: string,
+    @Query("language") language?: string
+  ) {
+    return this.aliexpress.dropshippingCategories(categoryId, language);
+  }
+
   @Get("affiliate/products")
   hotProducts(@Query() params: Record<string, string>) {
     return this.aliexpress.hotProducts(params);

@@ -363,6 +363,19 @@ export class AliexpressService {
     }, true);
   }
 
+  dropshippingCategories(categoryId?: string, language = "ru") {
+    if (categoryId && !/^\d+$/.test(categoryId)) {
+      throw new BadRequestException("categoryId must be a numeric AliExpress category ID");
+    }
+    if (!/^(hi|de|ru|pt|ko|in|en|it|fr|zh|es|iw|ar|vi|th|uk|ja|id|pl|he|nl|tr)$/.test(language)) {
+      throw new BadRequestException("language is not supported by the AliExpress Dropshipping category API");
+    }
+    return this.call("aliexpress.ds.category.get", {
+      ...(categoryId ? { categoryId } : {}),
+      language
+    }, true);
+  }
+
   hotProducts(params: Record<string, unknown> = {}) {
     return this.call("aliexpress.affiliate.hotproduct.query", params);
   }
