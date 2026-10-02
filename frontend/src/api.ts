@@ -104,23 +104,29 @@ function findList(payload: unknown, keys: string[]): unknown[] {
   return search(payload) ?? [];
 }
 
-export function mapMarketplaceGoods(payload: unknown): ApiProduct[] {
+export function mapMarketplaceGoods(payload: unknown, priceCurrency: "CNY" | "UZS" = "CNY"): ApiProduct[] {
   return findList(payload, ["product", "product_list", "products", "goods_list", "goods_details", "list"]).flatMap((entry) => {
     const goods = asObject(entry);
-    const id = firstString(goods.product_id, goods.goods_sign, goods.goods_id, goods.id);
+    const id = firstString(goods.product_id, goods.itemId, goods.goods_sign, goods.goods_id, goods.id);
     if (!id) return [];
 
-    const hasMarketplacePrice = goods.target_sale_price !== undefined || goods.sale_price !== undefined;
-    const price = Number(goods.target_sale_price ?? goods.sale_price ?? goods.min_group_price ?? goods.min_normal_price ?? goods.group_price ?? 0);
-    const originalPrice = Number(goods.target_original_price ?? goods.original_price ?? 0);
-    const discount = Number(goods.coupon_discount ?? goods.discount ?? (originalPrice > price ? originalPrice - price : 0));
+    const rawPrice = firstString(
+      goods.target_sale_price, goods.targetSalePrice, goods.sale_price, goods.salePrice,
+      goods.min_group_price, goods.min_normal_price, goods.group_price
+    );
+    const hasMarketplacePrice = Boolean(rawPrice);
+    const price = Number(rawPrice || 0);
+    const originalPrice = Number(goods.target_original_price ?? goods.targetOriginalPrice ?? goods.original_price ?? 0);
+    const rawDiscount = firstString(goods.coupon_discount, goods.discount);
+    const discount = Number(rawDiscount.replace("%", "")) || (originalPrice > price ? originalPrice - price : 0);
     const categoryIds = Array.isArray(goods.cat_ids) ? goods.cat_ids : [];
-    const categoryId = firstString(goods.first_level_category_id, goods.category_id, goods.cat_id, categoryIds[0], goods.goods_cat_id) || null;
+    const categoryId = firstString(goods.first_level_category_id, goods.category_id, goods.cat_id, goods.cateId, categoryIds[0], goods.goods_cat_id) || null;
     const title = firstString(goods.product_title, goods.goods_name, goods.goods_title, goods.title) || "Товар маркетплейса";
-    const description = firstString(goods.product_detail_url, goods.goods_desc, goods.goods_description, goods.description);
+    const description = firstString(goods.product_detail_url, goods.itemUrl, goods.goods_desc, goods.goods_description, goods.description);
     const imageUrls = asObject(goods.product_main_image_url);
     const imageUrl = firstString(
       goods.product_main_image_url,
+      goods.itemMainPic,
       goods.goods_thumbnail_url,
       goods.goods_image_url,
       goods.image_url,
@@ -134,7 +140,7 @@ export function mapMarketplaceGoods(payload: unknown): ApiProduct[] {
       descriptionUz: description,
       descriptionRu: description,
       currency: "UZS",
-      priceMinor: Math.max(0, Math.round(price * CNY_TO_UZS * (hasMarketplacePrice ? 100 : 1))),
+      priceMinor: Math.max(0, Math.round(price * (hasMarketplacePrice ? (priceCurrency === "UZS" ? 100 : CNY_TO_UZS * 100) : 1))),
       status: discount > 0 ? "sale" : "popular",
       imageUrl,
     };
@@ -190,6 +196,8 @@ export const api = {
   aliexpress: {
     hotProducts: (params: Record<string, unknown> = {}) =>
       request<unknown>(queryPath("/integrations/aliexpress/affiliate/products", params)),
+    dropshippingProducts: (params: Record<string, unknown> = {}) =>
+      request<unknown>(queryPath("/integrations/aliexpress/dropshipping/products", params)),
     categories: (params: Record<string, unknown> = {}) =>
       request<unknown>(queryPath("/integrations/aliexpress/affiliate/categories", params)),
     dropshippingCategories: (params: Record<string, unknown> = {}) =>

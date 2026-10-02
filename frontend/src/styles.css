@@ -565,6 +565,10 @@ input {
   color: var(--muted);
   text-align: center;
 }
+.catalog-products-state {
+  grid-column: 1 / -1;
+  margin: 14px 0;
+}
 .c0 { background: #e6faff; color: #087cc9; }
 .c1 { background: #f0f6ff; color: #1a6cf5; }
 .c2 { background: #eefbf3; color: #1aa56b; }

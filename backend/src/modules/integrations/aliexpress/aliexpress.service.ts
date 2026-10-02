@@ -393,6 +393,9 @@ export class AliexpressService {
     countryCode?: string;
   }) {
     const keyWord = params.keyWord?.trim();
+    if (!keyWord) {
+      throw new BadRequestException("keyWord is required for AliExpress Dropshipping product search");
+    }
     if (keyWord && keyWord.length > 100) {
       throw new BadRequestException("keyWord must be 100 characters or fewer");
     }

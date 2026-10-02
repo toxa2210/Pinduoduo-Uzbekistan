@@ -597,7 +597,7 @@ const translations = {
     localCatalogNote: "Показаны товары из каталога URIONA. Данные AliExpress сейчас недоступны.",
     affiliatePermissionError: "AliExpress пока не разрешил приложению доступ к каталогу товаров. Проверьте права Affiliate API в Open Platform.",
     dropshippingAuthorizationError: "Для подробностей товара не подключена авторизация Dropshipping API.",
-    dropshippingPermissionError: "У приложения нет разрешения Dropshipping API для просмотра подробностей товара.",
+    dropshippingPermissionError: "У приложения нет разрешения Dropshipping API для поиска и просмотра товаров.",
     catalogUnavailable: "Не удалось загрузить каталог. Проверьте подключение и попробуйте позже.",
     detailsUnavailable: "Не удалось получить подробности товара. Попробуйте позже.",
     localCatalogUnavailable: "Локальный каталог также временно недоступен.",
@@ -620,7 +620,7 @@ const translations = {
     localCatalogNote: "Showing products saved in the URIONA catalog. AliExpress data is currently unavailable.",
     affiliatePermissionError: "AliExpress has not granted this app access to its product catalog. Check Affiliate API permissions in Open Platform.",
     dropshippingAuthorizationError: "Dropshipping API authorization is not connected for product details.",
-    dropshippingPermissionError: "This app does not have Dropshipping API permission to load product details.",
+    dropshippingPermissionError: "This app does not have Dropshipping API permission to search for and view products.",
     catalogUnavailable: "Could not load the catalog. Check your connection and try again later.",
     detailsUnavailable: "Could not load product details. Try again later.",
     localCatalogUnavailable: "The local catalog is also temporarily unavailable.",
@@ -643,7 +643,7 @@ const translations = {
     localCatalogNote: "URIONA katalogida saqlangan mahsulotlar ko‘rsatilmoqda. AliExpress ma’lumotlari hozir mavjud emas.",
     affiliatePermissionError: "AliExpress ilovaga mahsulot katalogidan foydalanishga ruxsat bermagan. Open Platform'da Affiliate API huquqlarini tekshiring.",
     dropshippingAuthorizationError: "Mahsulot tafsilotlari uchun Dropshipping API avtorizatsiyasi ulanmagan.",
-    dropshippingPermissionError: "Ilovada mahsulot tafsilotlarini ko‘rish uchun Dropshipping API ruxsati yo‘q.",
+    dropshippingPermissionError: "Ilovada mahsulotlarni qidirish va ko‘rish uchun Dropshipping API ruxsati yo‘q.",
     catalogUnavailable: "Katalogni yuklab bo‘lmadi. Ulanishni tekshirib, keyinroq qayta urinib ko‘ring.",
     detailsUnavailable: "Mahsulot tafsilotlarini yuklab bo‘lmadi. Keyinroq qayta urinib ko‘ring.",
     localCatalogUnavailable: "Mahalliy katalog ham vaqtincha ishlamayapti.",
@@ -708,13 +708,13 @@ function firebaseErrorMessage(error: unknown): string {
   return messages[code] ?? (error instanceof Error ? error.message : "Не удалось выполнить запрос Firebase.");
 }
 
-function aliExpressErrorMessage(error: unknown, language: Language, context: "catalog" | "details"): string {
+function aliExpressErrorMessage(error: unknown, language: Language, context: "catalog" | "dropshipping" | "details"): string {
   const message = error instanceof Error ? error.message.toLowerCase() : "";
   const copy = translations[language];
   if (message.includes("insufficientpermission") || message.includes("does not have permission")) {
-    return context === "details" ? copy.dropshippingPermissionError : copy.affiliatePermissionError;
+    return context === "details" || context === "dropshipping" ? copy.dropshippingPermissionError : copy.affiliatePermissionError;
   }
-  if (context === "details" && (message.includes("requires oauth authorization") || message.includes("access token"))) {
+  if (context !== "catalog" && (message.includes("requires oauth authorization") || message.includes("access token"))) {
     return copy.dropshippingAuthorizationError;
   }
   return context === "details" ? copy.detailsUnavailable : copy.catalogUnavailable;
@@ -1042,6 +1042,9 @@ export function App() {
     setCatalogError("");
     setCatalogSource("loading");
     const timer = window.setTimeout(() => {
+      const useDropshippingSearch = selectedCat !== "all" || Boolean(search.trim());
+      const selectedCategory = categories.find((category) => category.id === selectedCat);
+      const categoryKeyword = selectedCat !== "all" ? categoryLabel(selectedCategory)?.trim() : "";
       const filters = {
         ...(search.trim() ? { keywords: search.trim() } : {}),
         ...(selectedCat !== "all" ? { category_ids: selectedCat } : {}),
@@ -1082,14 +1085,32 @@ export function App() {
           setCatalogError(text.localCatalogUnavailable);
         }
       };
-      const load = api.aliexpress.hotProducts(filters);
+      const load = useDropshippingSearch
+        ? api.aliexpress.dropshippingProducts({
+            ...((search.trim() || categoryKeyword) ? { keyWord: search.trim() || categoryKeyword } : {}),
+            ...(selectedCat !== "all" ? { categoryId: selectedCat } : {}),
+            pageIndex: 1,
+            pageSize: 20,
+            sortBy: "orders,desc",
+            currency: "UZS",
+          })
+        : api.aliexpress.hotProducts(filters);
       load.then((payload) => {
         if (!active) return;
-        const liveProducts = mapMarketplaceGoods(payload).map((product) => ({
+        const liveProducts = mapMarketplaceGoods(payload, useDropshippingSearch ? "UZS" : "CNY").map((product) => ({
           ...product,
-          category: categories.find((category) => category.id === product.categoryId) ?? null,
+          category: categories.find((category) => category.id === product.categoryId)
+            ?? categories.find((category) => category.id === selectedCat)
+            ?? null,
         }));
         if (!liveProducts.length) {
+          if (useDropshippingSearch) {
+            setProducts([]);
+            setLiveCatalog(true);
+            setCatalogSource("aliexpress");
+            setCatalogError("");
+            return;
+          }
           return useLocalCatalog();
         }
         setProducts(liveProducts);
@@ -1099,6 +1120,13 @@ export function App() {
         setKnownProducts((current) => Array.from(new Map([...current, ...liveProducts].map((product) => [product.id, product])).values()).slice(-100));
       }).catch((error: unknown) => {
         if (!active) return;
+        if (useDropshippingSearch) {
+          setProducts([]);
+          setLiveCatalog(true);
+          setCatalogSource("unavailable");
+          setCatalogError(aliExpressErrorMessage(error, language, "dropshipping"));
+          return;
+        }
         return useLocalCatalog(error);
       }).finally(() => {
         if (active) setCatalogLoading(false);
@@ -1115,7 +1143,7 @@ export function App() {
     return products.filter((product) => {
       const title = `${product.titleUz ?? ""} ${product.titleRu ?? ""}`.toLowerCase();
       const categoryName = `${product.category?.nameUz ?? ""} ${product.category?.nameRu ?? ""}`.toLowerCase();
-      const matchesQuery = liveCatalog || !term || title.includes(term) || categoryName.includes(term);
+      const matchesQuery = !term || liveCatalog || title.includes(term) || categoryName.includes(term);
       return matchesQuery;
     });
   }, [products, search, liveCatalog]);
@@ -1177,25 +1205,25 @@ export function App() {
       {canRetry && <button type="button" onClick={retryCatalog}>{text.retry}</button>}
     </div>
   );
-  const categoryUiLabel = (key: "count" | "search" | "clearSearch" | "all" | "back" | "select" | "selected" | "subcategories" | "noResults" | "productsComing", count = 0) => {
+  const categoryUiLabel = (key: "count" | "search" | "clearSearch" | "all" | "back" | "select" | "selected" | "subcategories" | "noResults", count = 0) => {
     const labels = {
       ru: {
         count: `Категорий: ${count}`, search: "Поиск по всем категориям AliExpress", all: "Все 548 категорий",
         clearSearch: "Очистить поиск",
         back: "Назад", select: "Выбрать категорию", selected: "Выбрана", subcategories: `Подкатегорий: ${count}`,
-        noResults: "Категории не найдены", productsComing: "Товары в этих категориях подключим следующим этапом.",
+        noResults: "Категории не найдены",
       },
       en: {
         count: `Categories: ${count}`, search: "Search all AliExpress categories", all: "All 548 categories",
         clearSearch: "Clear search",
         back: "Back", select: "Select category", selected: "Selected", subcategories: `Subcategories: ${count}`,
-        noResults: "No categories found", productsComing: "Products in these categories will be connected in the next step.",
+        noResults: "No categories found",
       },
       uz: {
         count: `Kategoriyalar: ${count}`, search: "Barcha AliExpress kategoriyalaridan qidirish", all: "Barcha 548 kategoriya",
         clearSearch: "Qidiruvni tozalash",
         back: "Orqaga", select: "Kategoriyani tanlash", selected: "Tanlangan", subcategories: `Quyi kategoriyalar: ${count}`,
-        noResults: "Kategoriyalar topilmadi", productsComing: "Bu kategoriyalardagi mahsulotlar keyingi bosqichda ulanadi.",
+        noResults: "Kategoriyalar topilmadi",
       },
     } as const;
     return labels[language][key];
@@ -1596,8 +1624,13 @@ export function App() {
         )}
       </div>
 
-      {products.length === 0 && !catalogLoading ? (
-        <p className="catalog-source-note" role="status">{categoryUiLabel("productsComing")}</p>
+      {products.length === 0 ? (
+        <div className="catalog-products-state">
+          {renderCatalogState(
+            catalogLoading ? text.loading : catalogError || text.noGoods,
+            !catalogLoading && Boolean(catalogError)
+          )}
+        </div>
       ) : products.length > 0 ? (
         <>
           <div className="section-head panel-head">
