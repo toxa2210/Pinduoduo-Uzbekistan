@@ -9,7 +9,7 @@ export class ApiRequestError extends Error {
   }
 }
 
-export type ApiCategory = { id: string; nameUz: string; nameRu: string };
+export type ApiCategory = { id: string; nameUz: string; nameRu: string; parentId?: string | null };
 export type ApiProduct = {
   id: string;
   categoryId: string | null;
@@ -147,7 +147,8 @@ export function mapMarketplaceCategories(payload: unknown): ApiCategory[] {
     const category = asObject(entry);
     const id = firstString(category.category_id, category.cat_id, category.goods_cat_id, category.id);
     const name = firstString(category.category_name, category.cat_name, category.goods_cat_name, category.name);
-    return id && name ? [{ id, nameUz: name, nameRu: name }] : [];
+    const parentId = firstString(category.parent_category_id, category.parent_id);
+    return id && name ? [{ id, nameUz: name, nameRu: name, parentId: parentId || null }] : [];
   });
 }
 
@@ -191,6 +192,8 @@ export const api = {
       request<unknown>(queryPath("/integrations/aliexpress/affiliate/products", params)),
     categories: (params: Record<string, unknown> = {}) =>
       request<unknown>(queryPath("/integrations/aliexpress/affiliate/categories", params)),
+    dropshippingCategories: (params: Record<string, unknown> = {}) =>
+      request<unknown>(queryPath("/integrations/aliexpress/dropshipping/categories", params)),
     productDetails: (productId: string, params: Record<string, unknown> = {}) =>
       request<unknown>(queryPath(`/integrations/aliexpress/product/${encodeURIComponent(productId)}`, params)),
     affiliateLinks: (params: Record<string, unknown> = {}) =>

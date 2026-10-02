@@ -357,7 +357,7 @@ export function App() {
     let active = true;
     setCategoriesLoading(true);
     setCategoriesError("");
-    api.aliexpress.categories()
+    api.aliexpress.dropshippingCategories({ language: language === "ru" ? "ru" : "en" })
       .then((payload) => {
         if (!active) return;
         const liveCategories = mapMarketplaceCategories(payload);
@@ -701,7 +701,7 @@ export function App() {
 
         <div className="category-grid">
           {categories.length === 0 && renderCatalogState(categoriesLoading ? text.loadingCatalog : categoriesError || text.noGoods, !categoriesLoading && Boolean(categoriesError))}
-          {categories.map((category, index) => (
+          {topLevelCategories.slice(0, 8).map((category, index) => (
             <button
               key={category.id}
               type="button"
@@ -791,64 +791,96 @@ export function App() {
           <small>Каталог</small>
           <h2>Категории</h2>
         </div>
-        <button type="button" onClick={() => setSelectedCat("all")}>Все</button>
+        <span className="category-total">{categoryUiLabel("count", categories.length)}</span>
       </div>
 
-      <div className="category-grid large-grid">
-        {categories.length === 0 && renderCatalogState(categoriesLoading ? text.loadingCatalog : categoriesError || text.noGoods, !categoriesLoading && Boolean(categoriesError))}
-        {categories.map((category, index) => (
-          <button
-            key={category.id}
-            type="button"
-            className={`category-item ${selectedCat === category.id ? "active" : ""}`}
-            onClick={() => {
-              setSelectedCat(category.id);
-              setNotice(`${category.nameRu} активна`);
-            }}
-          >
-            <span className={`category-icon c${index % 8}`}>◇</span>
-            <b>{category.nameRu}</b>
+      <div className="category-browser-controls">
+        <label className="category-search">
+          <Search size={17} />
+          <input
+            value={categorySearch}
+            onChange={(event) => setCategorySearch(event.target.value)}
+            placeholder={categoryUiLabel("search")}
+            aria-label={categoryUiLabel("search")}
+          />
+          {categorySearch && <button type="button" onClick={() => setCategorySearch("")} aria-label={categoryUiLabel("clearSearch")}><X size={16} /></button>}
+        </label>
+        {categorySearch ? (
+          <button className="category-back-btn" type="button" onClick={() => setCategorySearch("")}>
+            {categoryUiLabel("all")}
           </button>
-        ))}
+        ) : categoryParentId ? (
+          <div className="category-breadcrumbs">
+            <button type="button" onClick={() => setCategoryParentId(null)}>{localizeText("Все категории", language)}</button>
+            {categoryPath.map((category) => (
+              <span key={category.id}>
+                <ChevronRight size={14} />
+                <button type="button" onClick={() => setCategoryParentId(category.id)}>{categoryLabel(category)}</button>
+              </span>
+            ))}
+            <button className="category-back-btn" type="button" onClick={() => setCategoryParentId(categoryPath.length > 1 ? categoryPath[categoryPath.length - 2].id : null)}>
+              <ChevronRight size={14} className="back-chevron" />{categoryUiLabel("back")}
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      <div className="catalog-filters">
-        <label htmlFor="marketplace-category-filter">Категория AliExpress</label>
-        <select id="marketplace-category-filter" value={selectedCat} onChange={(event) => setSelectedCat(event.target.value)}>
-          <option value="all">Все категории</option>
-          {categories.map((category) => <option key={category.id} value={category.id}>{category.nameRu}</option>)}
-        </select>
-      </div>
-
-      <div className="section-head panel-head">
-        <div>
-          <small>Товары</small>
-          <h2>{selectedCat === "all" ? "Все товары" : categories.find((item) => item.id === selectedCat)?.nameRu}</h2>
-        </div>
-      </div>
-
-      <div className="product-grid compact-grid">
-        {catalogMessage ? renderCatalogState(catalogMessage, Boolean(catalogError)) : visibleProducts.map((product, index) => (
-          <article key={product.id} className="product-card compact-card">
-            <div className={`product-media media-${index % 5}`}>
-              {product.imageUrl && <img src={product.imageUrl} alt={product.titleRu || product.titleUz} loading="lazy" />}
-              <span className="product-tag">{product.status === "sale" ? "Скидка" : "Новинка"}</span>
-              <button type="button" className={`wish-btn ${liked.includes(product.id) ? "active" : ""}`} onClick={() => toggleFavorite(product.id)} aria-label={liked.includes(product.id) ? "Удалить из избранного" : "Добавить в избранное"}>
-                <Heart size={15} fill={liked.includes(product.id) ? "currentColor" : "none"} />
+      <div className="category-grid large-grid category-browser-grid">
+        {categories.length === 0 && renderCatalogState(categoriesLoading ? text.loadingCatalog : categoriesError || text.noGoods, !categoriesLoading && Boolean(categoriesError))}
+        {browsedCategories.map((category, index) => {
+          const children = categoryChildren.get(category.id) ?? [];
+          const isSelected = selectedCat === category.id;
+          return (
+            <article key={category.id} className={`category-browser-card ${isSelected ? "selected" : ""}`}>
+              <button
+                type="button"
+                className={`category-item ${isSelected ? "active" : ""}`}
+                onClick={() => {
+                  if (categorySearch || children.length === 0) {
+                    setSelectedCat(category.id);
+                    setNotice(`${categoryLabel(category)} активна`);
+                    if (categorySearch) setCategorySearch("");
+                  } else {
+                    setCategoryParentId(category.id);
+                  }
+                }}
+              >
+                <span className={`category-icon c${index % 8}`}>◇</span>
+                <b>{categoryLabel(category)}</b>
+                {children.length > 0 && <small>{categoryUiLabel("subcategories", children.length)}</small>}
               </button>
-            </div>
-            <div className="product-body">
-              <span className="product-category">{product.category?.nameRu}</span>
-              <h3>{product.titleRu}</h3>
-              <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>Подробнее</button>
-              <div className="price-row">
-                <strong>{formatUzs(product.priceMinor)}</strong>
-                <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}><Plus size={14} />Добавить</button>
-              </div>
+              <button
+                type="button"
+                className="category-select-btn"
+                onClick={() => {
+                  setSelectedCat(category.id);
+                  setNotice(`${categoryLabel(category)} активна`);
+                }}
+              >
+                {categoryUiLabel(isSelected ? "selected" : "select")}
+              </button>
+            </article>
+          );
+        })}
+        {!categoriesLoading && categories.length > 0 && browsedCategories.length === 0 && (
+          <p className="category-empty-state" role="status">{categorySearch ? categoryUiLabel("noResults") : text.emptyCategories}</p>
+        )}
+      </div>
+
+      {products.length === 0 && !catalogLoading ? (
+        <p className="catalog-source-note" role="status">{categoryUiLabel("productsComing")}</p>
+      ) : products.length > 0 ? (
+        <>
+          <div className="section-head panel-head">
+            <div>
+              <small>Товары</small>
+              <h2>{selectedCat === "all" ? "Все товары" : categoryLabel(categories.find((item) => item.id === selectedCat))}</h2>
             </div>
           </article>
         ))}
       </div>
+  const [categoryParentId, setCategoryParentId] = useState<string | null>(null);
+  const [categorySearch, setCategorySearch] = useState("");
     </section>
   );
 
@@ -1118,6 +1150,39 @@ export function App() {
           {authNotice && <p className="auth-message" role="status">{authNotice}</p>}
         </div>
       ) : (
+  const categoryChildren = useMemo(() => {
+    const byParent = new Map<string, ApiCategory[]>();
+    for (const category of categories) {
+      const key = category.parentId ?? "root";
+      const siblings = byParent.get(key) ?? [];
+      siblings.push(category);
+      byParent.set(key, siblings);
+    }
+    return byParent;
+  }, [categories]);
+  const topLevelCategories = categoryChildren.get("root") ?? categories;
+  const categoryPath = useMemo(() => {
+    const path: ApiCategory[] = [];
+    const visited = new Set<string>();
+    let category = categories.find((item) => item.id === categoryParentId);
+    while (category && !visited.has(category.id)) {
+      visited.add(category.id);
+      path.unshift(category);
+      const parentId = category.parentId;
+      category = parentId ? categories.find((item) => item.id === parentId) : undefined;
+    }
+    return path;
+  }, [categories, categoryParentId]);
+  const browsedCategories = useMemo(() => {
+    const term = categorySearch.trim().toLocaleLowerCase();
+    if (term) {
+      return categories.filter((category) =>
+        `${category.nameRu} ${category.nameUz}`.toLocaleLowerCase().includes(term)
+      );
+    }
+    return categoryChildren.get(categoryParentId ?? "root") ?? [];
+  }, [categories, categoryChildren, categoryParentId, categorySearch]);
+
         <>
           <div className="profile-header">
             <div className="profile-avatar"><LogoMark /></div>
@@ -1142,6 +1207,29 @@ export function App() {
                   <label>Имя<input value={profileForm.name} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} placeholder="Ваше имя" /></label>
                   <label>Email<input type="email" value={profileForm.email} readOnly /></label>
                   <label>Телефон<input type="tel" value={profileForm.phone} onChange={(event) => setProfileForm({ ...profileForm, phone: event.target.value })} placeholder="Добавить номер позже" /></label>
+  const categoryUiLabel = (key: "count" | "search" | "clearSearch" | "all" | "back" | "select" | "selected" | "subcategories" | "noResults" | "productsComing", count = 0) => {
+    const labels = {
+      ru: {
+        count: `Категорий: ${count}`, search: "Поиск по всем категориям AliExpress", all: "Все 548 категорий",
+        clearSearch: "Очистить поиск",
+        back: "Назад", select: "Выбрать категорию", selected: "Выбрана", subcategories: `Подкатегорий: ${count}`,
+        noResults: "Категории не найдены", productsComing: "Товары в этих категориях подключим следующим этапом.",
+      },
+      en: {
+        count: `Categories: ${count}`, search: "Search all AliExpress categories", all: "All 548 categories",
+        clearSearch: "Clear search",
+        back: "Back", select: "Select category", selected: "Selected", subcategories: `Subcategories: ${count}`,
+        noResults: "No categories found", productsComing: "Products in these categories will be connected in the next step.",
+      },
+      uz: {
+        count: `Kategoriyalar: ${count}`, search: "Barcha AliExpress kategoriyalaridan qidirish", all: "Barcha 548 kategoriya",
+        clearSearch: "Qidiruvni tozalash",
+        back: "Orqaga", select: "Kategoriyani tanlash", selected: "Tanlangan", subcategories: `Quyi kategoriyalar: ${count}`,
+        noResults: "Kategoriyalar topilmadi", productsComing: "Bu kategoriyalardagi mahsulotlar keyingi bosqichda ulanadi.",
+      },
+    } as const;
+    return labels[language][key];
+  };
                   <label>Город<input value={profileForm.city} onChange={(event) => setProfileForm({ ...profileForm, city: event.target.value })} placeholder="Ташкент" /></label>
                   <label>Адрес доставки<textarea value={profileForm.address} onChange={(event) => setProfileForm({ ...profileForm, address: event.target.value })} placeholder="Улица, дом, квартира" rows={3} /></label>
                 </div>

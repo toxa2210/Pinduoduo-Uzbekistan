@@ -464,6 +464,107 @@ input {
 .c6 { background: #eaf9ff; color: #1595b4; }
 .c7 { background: #f4f4f5; color: #4d5967; }
 
+.category-total {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(0, 217, 255, .25);
+  border-radius: 999px;
+  color: var(--cyan);
+  font-size: 13px;
+  font-weight: 700;
+}
+.category-browser-controls {
+  display: grid;
+  gap: 14px;
+  margin: 22px 0 16px;
+}
+.category-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(100%, 560px);
+  min-height: 46px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(14, 27, 59, .76);
+  color: var(--muted);
+}
+.category-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+}
+.category-search input::placeholder { color: var(--muted); }
+.category-search button,
+.category-breadcrumbs button,
+.category-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--cyan);
+  font: inherit;
+}
+.category-breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.category-breadcrumbs > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.category-breadcrumbs .category-back-btn {
+  margin-left: auto;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.back-chevron { transform: rotate(180deg); }
+.category-browser-grid { align-items: stretch; }
+.category-browser-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+.category-browser-card .category-item {
+  width: 100%;
+  min-height: 152px;
+  flex: 1;
+}
+.category-browser-card .category-item small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.category-browser-card.selected .category-item {
+  border-color: rgba(0, 217, 255, .58);
+}
+.category-select-btn {
+  align-self: center;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--cyan);
+  font-size: 12px;
+  font-weight: 700;
+}
+.category-empty-state {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  text-align: center;
+}
 .product-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
