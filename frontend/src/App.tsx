@@ -400,6 +400,11 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   "Тариф доставки обновлён": { en: "Shipping quote refreshed", uz: "Yetkazib berish narxi yangilandi" },
   "Стоимость доставки": { en: "Delivery cost", uz: "Yetkazib berish narxi" },
   "Ожидает оплаты": { en: "Awaiting payment", uz: "To‘lov kutilmoqda" },
+  "Сервис расчёта доставки временно недоступен. Проверьте соединение и повторите попытку.": {
+    en: "The shipping quote service is temporarily unavailable. Check your connection and try again.",
+    uz: "Yetkazib berish narxini hisoblash xizmati vaqtincha ishlamayapti. Ulanishni tekshirib, qayta urinib ko‘ring.",
+  },
+  "Повторить расчёт доставки": { en: "Retry shipping quote", uz: "Yetkazib berishni qayta hisoblash" },
   "Заказ сформирован и ожидает оплаты. Способ оплаты подключим отдельно.": {
     en: "Your order is placed and awaiting payment. Payment methods will be added separately.",
     uz: "Buyurtmangiz shakllantirildi va to‘lov kutilmoqda. To‘lov usullari keyinroq ulanadi.",
@@ -1305,6 +1310,7 @@ export function App() {
   const [freightError, setFreightError] = useState("");
   const [selectedFreightCode, setSelectedFreightCode] = useState("");
   const [freightQuantity, setFreightQuantity] = useState(1);
+  const [freightAttempt, setFreightAttempt] = useState(0);
   const [quoteRefreshProductId, setQuoteRefreshProductId] = useState("");
   const [relatedProducts, setRelatedProducts] = useState<ApiProduct[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
@@ -1470,13 +1476,20 @@ export function App() {
       setFreightOptions(options);
       if (!options.length) setFreightError(localizeText("Для этого варианта нет доступных способов доставки в Узбекистан.", language));
     }).catch((error: unknown) => {
-      if (active) setFreightError(error instanceof Error ? error.message : localizeText("Не удалось рассчитать доставку.", language));
+      if (active) {
+        const message = error instanceof Error ? error.message : "";
+        setFreightError(
+          /failed to fetch|networkerror|load failed/i.test(message)
+            ? localizeText("Сервис расчёта доставки временно недоступен. Проверьте соединение и повторите попытку.", language)
+            : message || localizeText("Не удалось рассчитать доставку.", language),
+        );
+      }
     }).finally(() => {
       if (active) setFreightLoading(false);
     });
 
     return () => { active = false; };
-  }, [detailProduct, selectedDetailSku, freightQuantity, language]);
+  }, [detailProduct, selectedDetailSku, freightQuantity, language, freightAttempt]);
 
   const clearExpiredSession = (email?: string | null) => {
     localStorage.removeItem("uriona-access-token");
@@ -4123,7 +4136,12 @@ export function App() {
                                 })}
                                 aria-pressed={selectedSkuProperties[group.id] === value}
                               >
-                                {readString(propertyImage ?? {}, "sku_image") && <img src={marketplaceImageUrl(readString(propertyImage ?? {}, "sku_image"), 160) || undefined} alt="" loading="lazy" />}
+                                {readString(propertyImage ?? {}, "sku_image") && <img
+                                  src={marketplaceImageUrl(readString(propertyImage ?? {}, "sku_image"), 160) || undefined}
+                                  alt=""
+                                  loading="lazy"
+                                  onError={(event) => { event.currentTarget.hidden = true; }}
+                                />}
                                 {value}
                               </button>
                             );
@@ -4151,7 +4169,12 @@ export function App() {
                   {detailProduct.id.split("::")[0].match(/^\d+$/) && <section className="product-freight-options" aria-live="polite">
                     <h3>{localizeText("Доставка в Узбекистан", language)}</h3>
                     {freightLoading && <p role="status">{localizeText("Рассчитываем варианты доставки…", language)}</p>}
-                    {freightError && <p role="alert">{freightError}</p>}
+                    {freightError && <div role="alert">
+                      <p>{freightError}</p>
+                      {!freightLoading && <button type="button" className="secondary-btn" onClick={() => setFreightAttempt((attempt) => attempt + 1)}>
+                        {localizeText("Повторить расчёт доставки", language)}
+                      </button>}
+                    </div>}
                     {freightOptions.map((option) => (
                       <button
                         type="button"
