@@ -21,6 +21,7 @@ import {
   MessageCircle,
   Minus,
   Package,
+  PackageCheck,
   PawPrint,
   Plus,
   Search,
@@ -43,11 +44,11 @@ import {
   Moon,
   Sun,
 } from "lucide-react";
-import { createUserWithEmailAndPassword, getIdToken, reload, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from "@firebase/auth";
 import type { User as FirebaseUser } from "@firebase/auth";
 import { ApiRequestError, api, formatUzs, mapMarketplaceCategories, mapMarketplaceGoods, marketplaceImageUrl, type ApiCategory, type ApiOrder, type ApiProduct, type ApiUser, type ImageSearchMatch } from "./api";
 import { inferMarketplaceCategoryId, prepareMarketplaceQuery, productCardTitle, productPopularity, searchProducts, suggestCategories } from "./search";
-import { firebaseAuth, firebaseConfigReady } from "./firebase";
+import { firebaseConfigReady, getFirebaseAuth } from "./firebase";
+import { VirtualProductGrid } from "./VirtualProductGrid";
 
 const navItems = ["Главная", "Категории", "Корзина", "Профиль"] as const;
 type Language = "ru" | "en" | "uz";
@@ -288,16 +289,15 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   "Оплата и доставка в Узбекистан": { en: "Payment and delivery to Uzbekistan", uz: "O‘zbekistonga to‘lov va yetkazib berish" },
   "Как мы доставляем": { en: "How delivery works", uz: "Yetkazib berish tartibi" },
   "Срок": { en: "Delivery time", uz: "Muddat" },
-  "От 7 до 21 дня": { en: "7 to 21 days", uz: "7 kundan 21 kungacha" },
-  "Зависит от продавца, типа товара и логистики до Ташкента.": {
-    en: "It depends on the seller, product type, and shipping to Tashkent.",
-    uz: "Muddat sotuvchi, mahsulot turi va Toshkentgacha bo‘lgan logistika xizmatiga bog‘liq.",
+  "Зависит от выбранного товара": { en: "Depends on the selected product", uz: "Tanlangan mahsulotga bog‘liq" },
+  "AliExpress показывает доступный срок после выбора варианта и способа доставки.": {
+    en: "AliExpress provides an estimated delivery time after you select a product option and shipping method.",
+    uz: "AliExpress mahsulot varianti va yetkazib berish usuli tanlangandan keyin taxminiy muddatni ko‘rsatadi.",
   },
-  "Отслеживание": { en: "Tracking", uz: "Kuzatuv" },
-  "По треку и статусам": { en: "Track your parcel and its status", uz: "Trek raqami va holatlar orqali" },
-  "Получаете уведомления о перемещении посылки и готовности к выдаче.": {
-    en: "Get updates as your parcel moves and when it is ready for pickup.",
-    uz: "Jo‘natma harakati va olib ketishga tayyorligi haqida xabarlar olasiz.",
+  "Отслеживание у перевозчика": { en: "Carrier tracking", uz: "Tashuvchi orqali kuzatish" },
+  "Доступность отслеживания зависит от выбранного способа доставки и появится при расчёте.": {
+    en: "Tracking availability depends on the selected shipping method and is shown with the quote.",
+    uz: "Kuzatuv imkoniyati tanlangan yetkazib berish usuliga bog‘liq va tarif bilan birga ko‘rsatiladi.",
   },
   "Поддержка": { en: "Support", uz: "Yordam" },
   "Как связаться с поддержкой?": { en: "How can I contact support?", uz: "Yordam xizmatiga qanday bog‘lanaman?" },
@@ -396,11 +396,57 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   "Фотографии товара": { en: "Product photos", uz: "Mahsulot rasmlari" },
   "Видео товара": { en: "Product video", uz: "Mahsulot videosi" },
   "Варианты товара": { en: "Product options", uz: "Mahsulot variantlari" },
+  "Обновить тариф доставки": { en: "Refresh shipping quote", uz: "Yetkazib berish narxini yangilash" },
+  "Тариф доставки обновлён": { en: "Shipping quote refreshed", uz: "Yetkazib berish narxi yangilandi" },
+  "Стоимость доставки": { en: "Delivery cost", uz: "Yetkazib berish narxi" },
+  "Ожидает оплаты": { en: "Awaiting payment", uz: "To‘lov kutilmoqda" },
+  "Заказ сформирован и ожидает оплаты. Способ оплаты подключим отдельно.": {
+    en: "Your order is placed and awaiting payment. Payment methods will be added separately.",
+    uz: "Buyurtmangiz shakllantirildi va to‘lov kutilmoqda. To‘lov usullari keyinroq ulanadi.",
+  },
+  "Итог с доставкой": { en: "Total including delivery", uz: "Yetkazib berish bilan jami" },
+  "Доставка в сумах": { en: "Delivery in UZS", uz: "So‘mda yetkazib berish" },
+  "Сначала выберите тариф для каждого товара": { en: "Choose a shipping option for every item first", uz: "Avval har bir mahsulot uchun yetkazib berishni tanlang" },
+  "Доставка включена в итог. Заказ будет сохранён в ожидании оплаты; платёжный способ подключим отдельно.": {
+    en: "Delivery is included in the total. The order will be saved as awaiting payment; payment methods will be added separately.",
+    uz: "Yetkazib berish jami summaga kiritilgan. Buyurtma to‘lov kutilmoqda holatida saqlanadi; to‘lov usuli keyinroq qo‘shiladi.",
+  },
   "Цена не указана": { en: "Price not provided", uz: "Narx ko‘rsatilmagan" },
   "Дата не указана": { en: "Date not provided", uz: "Sana ko‘rsatilmagan" },
-  "Оформление заказа ещё не подключено": { en: "Checkout is not available yet", uz: "Buyurtmani rasmiylashtirish hali mavjud emas" },
   "Перейти к оформлению": { en: "Proceed to checkout", uz: "Rasmiylashtirishga o‘tish" },
-  "Оформление заказа пока недоступно.": { en: "Checkout is not available yet.", uz: "Buyurtmani rasmiylashtirish hozircha mavjud emas." },
+  "Оформление заказа": { en: "Checkout", uz: "Buyurtmani rasmiylashtirish" },
+  "Данные доставки": { en: "Delivery details", uz: "Yetkazib berish ma’lumotlari" },
+  "шт.": { en: "items", uz: "dona" },
+  "Назад в корзину": { en: "Back to cart", uz: "Savatga qaytish" },
+  "Сохраняем заказ…": { en: "Saving order…", uz: "Buyurtma saqlanmoqda…" },
+  "Ваш заказ": { en: "Your order", uz: "Buyurtmangiz" },
+  "Введите данные доставки.": { en: "Enter your delivery details.", uz: "Yetkazib berish ma’lumotlarini kiriting." },
+  "Сначала войдите в аккаунт, чтобы сохранить заказ.": { en: "Sign in first to save your order.", uz: "Buyurtmani saqlash uchun avval hisobga kiring." },
+  "Не удалось сохранить заказ. Попробуйте ещё раз.": { en: "Could not save the order. Please try again.", uz: "Buyurtmani saqlab bo‘lmadi. Qayta urinib ko‘ring." },
+  "Подтвердить заказ": { en: "Submit order", uz: "Buyurtmani tasdiqlash" },
+  "Получатель": { en: "Recipient", uz: "Qabul qiluvchi" },
+  "Номер телефона": { en: "Phone number", uz: "Telefon raqami" },
+  "Адрес доставки": { en: "Delivery address", uz: "Yetkazib berish manzili" },
+  "Заказ принят": { en: "Order request received", uz: "Buyurtma so‘rovi qabul qilindi" },
+  "Мы сохранили заказ. Подтверждение стоимости доставки и оплата пока выполняются отдельно.": {
+    en: "Your order request is saved. Shipping total confirmation and payment are handled separately for now.",
+    uz: "Buyurtma so‘rovi saqlandi. Yetkazib berishning yakuniy narxi va to‘lov hozircha alohida tasdiqlanadi.",
+  },
+  "Перейти к моим заказам": { en: "Go to my orders", uz: "Buyurtmalarimga o‘tish" },
+  "Продолжить покупки": { en: "Continue shopping", uz: "Xaridni davom ettirish" },
+  "В корзине есть товары без действующего тарифа доставки. Откройте товар и выберите доставку для текущего количества.": {
+    en: "Some cart items have no current shipping quote. Reopen each product and select shipping for the current quantity.",
+    uz: "Savatdagi ayrim mahsulotlar uchun amaldagi yetkazib berish tarifi yo‘q. Joriy miqdor uchun tarifni tanlash maqsadida mahsulotni qayta oching.",
+  },
+  "Сумма товаров; доставка подтверждается отдельно": {
+    en: "Product subtotal; shipping is confirmed separately",
+    uz: "Mahsulotlar summasi; yetkazib berish alohida tasdiqlanadi",
+  },
+  "К оплате без доставки": { en: "Amount due before shipping", uz: "Yetkazib berishsiz to‘lov summasi" },
+  "Итоговая сумма доставки будет подтверждена после обработки заказа.": {
+    en: "The final shipping total will be confirmed after the order request is reviewed.",
+    uz: "Yetkazib berishning yakuniy summasi buyurtma ko‘rib chiqilgandan so‘ng tasdiqlanadi.",
+  },
   "Итого": { en: "Total", uz: "Jami" },
   "Корзина пуста": { en: "Your cart is empty", uz: "Savatingiz bo‘sh" },
   "Добавьте товары из каталога и вернитесь сюда.": { en: "Add products from the catalog and come back here.", uz: "Katalogdan mahsulot qo‘shib, bu yerga qayting." },
@@ -596,6 +642,29 @@ const uiTranslations: Record<string, Partial<Record<Language, string>>> = Object
   "Загружаем похожие товары…": { en: "Loading similar items…", uz: "O‘xshash mahsulotlar yuklanmoqda…" },
   "Этот вариант сейчас недоступен": { en: "This option is currently unavailable", uz: "Bu variant hozir mavjud emas" },
   "Выберите вариант": { en: "Choose an option", uz: "Variantni tanlang" },
+  "Доставка в Узбекистан": { en: "Delivery to Uzbekistan", uz: "O‘zbekistonga yetkazib berish" },
+  "Количество": { en: "Quantity", uz: "Miqdori" },
+  "Рассчитываем варианты доставки…": { en: "Calculating delivery options…", uz: "Yetkazib berish variantlari hisoblanmoqda…" },
+  "Для этого варианта нет доступных способов доставки в Узбекистан.": { en: "No delivery methods to Uzbekistan are available for this option.", uz: "Bu variant uchun O‘zbekistonga yetkazib berish usullari mavjud emas." },
+  "Не удалось рассчитать доставку.": { en: "Could not calculate shipping.", uz: "Yetkazib berish narxini hisoblab bo‘lmadi." },
+  "Условия зависят от тарифа": { en: "Depends on the shipping option", uz: "Yetkazib berish tarifiga bog‘liq" },
+  "Отслеживание у перевозчика": { en: "Carrier tracking", uz: "Tashuvchi orqali kuzatish" },
+  "Доступность отслеживания зависит от выбранного способа доставки и появится при расчёте.": {
+    en: "Tracking availability depends on the selected shipping method and is shown with the quote.",
+    uz: "Kuzatuv imkoniyati tanlangan yetkazib berish usuliga bog‘liq va tarif bilan birga ko‘rsatiladi.",
+  },
+  "Доставка": { en: "Delivery", uz: "Yetkazib berish" },
+  "Без отслеживания": { en: "No tracking", uz: "Kuzatuvsiz" },
+  "Отслеживание доступно": { en: "Tracking available", uz: "Kuzatuv mavjud" },
+  "дней": { en: "days", uz: "kun" },
+  "Доставка пересчитана для другого количества. Вернитесь к товару, чтобы получить новый тариф.": {
+    en: "The quantity changed. Reopen the product to get an updated shipping quote.",
+    uz: "Miqdor o‘zgardi. Yangilangan yetkazib berish narxini olish uchun mahsulotga qayting.",
+  },
+  "Доставка ещё не рассчитана для этого товара.": {
+    en: "Shipping has not been quoted for this product yet.",
+    uz: "Bu mahsulot uchun yetkazib berish narxi hali hisoblanmagan.",
+  },
   "Добавить в корзину": { en: "Add to cart", uz: "Savatga qo‘shish" },
   "В наличии": { en: "In stock", uz: "Mavjud" },
   "Фотографии товара": { en: "Product photos", uz: "Mahsulot rasmlari" },
@@ -867,6 +936,7 @@ const translations = {
 } as const;
 type View =
   | (typeof navItems)[number]
+  | "Оформление"
   | "Каталог"
   | "Магазины"
   | "Скидки"
@@ -1049,6 +1119,17 @@ type AliExpressProductDetails = {
   deliveryTime: string;
 };
 
+type AliExpressFreightOption = {
+  code: string;
+  company: string;
+  feeFormat: string;
+  currency: string;
+  feeUzsMinor: number;
+  minDeliveryDays: string;
+  maxDeliveryDays: string;
+  tracking: boolean | null;
+};
+
 function readRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -1069,6 +1150,46 @@ function readRecords(value: unknown): Record<string, unknown>[] {
   if (Object.keys(record).length === 0) return [];
   const nestedList = Object.values(record).find(Array.isArray);
   return Array.isArray(nestedList) ? nestedList.map(readRecord).filter((item) => Object.keys(item).length > 0) : [record];
+}
+
+function parseAliExpressFreightOptions(payload: unknown): AliExpressFreightOption[] {
+  const listKeys = new Set(["delivery_options", "deliveryOptions", "delivery_option_list", "deliveryOptionList", "options"]);
+  const visited = new Set<object>();
+  const findOptions = (value: unknown, depth = 0): unknown[] => {
+    if (!value || typeof value !== "object" || depth > 5 || visited.has(value)) return [];
+    visited.add(value);
+    if (Array.isArray(value)) return value;
+    const record = readRecord(value);
+    for (const [key, nested] of Object.entries(record)) {
+      if (listKeys.has(key) && Array.isArray(nested)) return nested;
+    }
+    for (const nested of Object.values(record)) {
+      const found = findOptions(nested, depth + 1);
+      if (found.length) return found;
+    }
+    return [];
+  };
+  return findOptions(payload).flatMap((entry) => {
+    const option = readRecord(entry);
+    const code = readString(option, "code", "deliveryOptionCode", "delivery_option_code");
+    if (!code) return [];
+    const rawTracking = option.tracking ?? option.is_tracking;
+    const tracking = typeof rawTracking === "boolean"
+      ? rawTracking
+      : typeof rawTracking === "string"
+        ? /^(true|yes|1)$/i.test(rawTracking)
+        : null;
+    return [{
+      code,
+      company: readString(option, "company", "companyName", "company_name", "logistics_service_name") || code,
+      feeFormat: readString(option, "feeFormat", "shipping_fee_format", "shippingFeeFormat", "shipping_fee", "shippingFee"),
+      currency: readString(option, "currency", "currency_code") || "UZS",
+      feeUzsMinor: Number(readString(option, "feeUzsMinor", "fee_uzs_minor")) || 0,
+      minDeliveryDays: readString(option, "min_delivery_days", "minDeliveryDays"),
+      maxDeliveryDays: readString(option, "max_delivery_days", "maxDeliveryDays"),
+      tracking,
+    }];
+  });
 }
 
 function skuIsAvailable(sku: Record<string, unknown>): boolean {
@@ -1101,11 +1222,11 @@ function parseAliExpressProductDetails(payload: unknown): AliExpressProductDetai
     description,
     status: readString(base, "product_status_type"),
     categoryId: readString(base, "category_id"),
-    images: Array.from(new Set(rawImages.map((image) => marketplaceImageUrl(image)).filter((image): image is string => Boolean(image)))),
+    images: Array.from(new Set(rawImages.map((image) => marketplaceImageUrl(image, 1280)).filter((image): image is string => Boolean(image)))),
     videos,
     storeName: readString(store, "store_name", "shop_name", "ae_store_name"),
     storeId: readString(store, "store_id", "shop_id", "seller_id"),
-    storeLogoUrl: marketplaceImageUrl(readString(store, "store_logo", "shop_logo", "logo_url") || null) || "",
+    storeLogoUrl: marketplaceImageUrl(readString(store, "store_logo", "shop_logo", "logo_url") || null, 160) || "",
     storeCountry: readString(store, "store_country", "country", "country_name"),
     storeRating: readString(store, "store_rating", "seller_rating", "evaluation_rating", "avg_evaluation_rating"),
     storePositiveRate: readString(store, "positive_feedback_rate", "positive_rate", "positive_feedback"),
@@ -1179,6 +1300,12 @@ export function App() {
   const [detailAttempt, setDetailAttempt] = useState(0);
   const [selectedDetailImage, setSelectedDetailImage] = useState(0);
   const [selectedSkuProperties, setSelectedSkuProperties] = useState<Record<string, string>>({});
+  const [freightOptions, setFreightOptions] = useState<AliExpressFreightOption[]>([]);
+  const [freightLoading, setFreightLoading] = useState(false);
+  const [freightError, setFreightError] = useState("");
+  const [selectedFreightCode, setSelectedFreightCode] = useState("");
+  const [freightQuantity, setFreightQuantity] = useState(1);
+  const [quoteRefreshProductId, setQuoteRefreshProductId] = useState("");
   const [relatedProducts, setRelatedProducts] = useState<ApiProduct[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [relatedError, setRelatedError] = useState("");
@@ -1216,6 +1343,11 @@ export function App() {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState("");
   const [ordersAttempt, setOrdersAttempt] = useState(0);
+  const [checkoutForm, setCheckoutForm] = useState({ recipientName: "", recipientPhone: "", deliveryCity: "", deliveryAddress: "" });
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
+  const [checkoutSuccessId, setCheckoutSuccessId] = useState("");
+  const [checkoutSuccessOrder, setCheckoutSuccessOrder] = useState<ApiOrder | null>(null);
   const [orderFilter, setOrderFilter] = useState<"all" | "active" | "archive">("all");
   const productDetails = useMemo(
     () => detailPayload === null ? null : parseAliExpressProductDetails(detailPayload),
@@ -1223,6 +1355,20 @@ export function App() {
   );
   useEffect(() => {
     if (!detailProduct || !productDetails) return;
+    if (detailProduct.skuId) {
+      const selectedSku = productDetails.skus.find(
+        (sku) => readString(sku, "sku_id", "id") === detailProduct.skuId,
+      );
+      if (selectedSku) {
+        setSelectedSkuProperties((current) => Object.keys(current).length
+          ? current
+          : Object.fromEntries(readRecords(selectedSku.ae_sku_property_dtos).flatMap((property) => {
+            const id = readString(property, "sku_property_id", "property_name", "sku_property_name");
+            const value = readString(property, "sku_property_value", "property_value", "prop_value");
+            return id && value ? [[id, value]] : [];
+          })));
+      }
+    }
     const enrichedProduct: ApiProduct = {
       ...detailProduct,
       categoryId: productDetails.categoryId || detailProduct.categoryId,
@@ -1291,6 +1437,46 @@ export function App() {
       });
     }) ?? null;
   }, [productDetails, detailSkuGroups, selectedSkuProperties]);
+  const selectedFreightOption = freightOptions.find((option) => option.code === selectedFreightCode) ?? null;
+
+  useEffect(() => {
+    const productId = detailProduct?.id.split("::")[0];
+    const skuId = selectedDetailSku ? readString(selectedDetailSku, "sku_id", "id") : "";
+    if (!detailProduct || !selectedDetailSku || !productId || !/^\d+$/.test(productId) || !skuId) {
+      setFreightOptions([]);
+      setSelectedFreightCode("");
+      setFreightError("");
+      setFreightLoading(false);
+      return;
+    }
+
+    let active = true;
+    setFreightOptions([]);
+    setSelectedFreightCode("");
+    setFreightError("");
+    setFreightLoading(true);
+    const locale = language === "en" ? "en_US" : "ru_RU";
+    api.aliexpress.freightOptions({
+      productId,
+      selectedSkuId: skuId,
+      quantity: freightQuantity,
+      shipToCountry: "UZ",
+      currency: "UZS",
+      language: locale,
+      locale,
+    }).then((payload) => {
+      if (!active) return;
+      const options = parseAliExpressFreightOptions(payload);
+      setFreightOptions(options);
+      if (!options.length) setFreightError(localizeText("Для этого варианта нет доступных способов доставки в Узбекистан.", language));
+    }).catch((error: unknown) => {
+      if (active) setFreightError(error instanceof Error ? error.message : localizeText("Не удалось рассчитать доставку.", language));
+    }).finally(() => {
+      if (active) setFreightLoading(false);
+    });
+
+    return () => { active = false; };
+  }, [detailProduct, selectedDetailSku, freightQuantity, language]);
 
   const clearExpiredSession = (email?: string | null) => {
     localStorage.removeItem("uriona-access-token");
@@ -1444,7 +1630,7 @@ export function App() {
     setDetailLoading(true);
     setSelectedDetailImage(0);
     setSelectedSkuProperties({});
-    api.aliexpress.productDetails(detailProduct.id, {
+    api.aliexpress.productDetails(detailProduct.id.split("::")[0], {
       ship_to_country: "UZ",
       target_currency: "UZS",
       target_language: language === "en" ? "en_US" : language === "uz" ? "uz_UZ" : "ru_RU",
@@ -1948,6 +2134,19 @@ export function App() {
   const cartEntryList = knownProducts.filter((product) => cartItems[product.id]);
   const cartCount = cartEntryList.reduce((sum, product) => sum + (cartItems[product.id] ?? 0), 0);
   const subtotal = cartEntryList.reduce((sum, product) => sum + product.priceMinor * (cartItems[product.id] ?? 0), 0);
+  const cartShippingReady = cartEntryList.every((product) => {
+    if (!/^\d+$/.test(product.id.split("::")[0])) return true;
+    return Boolean(
+      product.skuId
+      && product.shippingOptionCode
+      && product.shippingCompany
+      && product.shippingFeeMinor !== undefined
+      && product.shippingQuoteQuantity === cartItems[product.id],
+    );
+  });
+  const deliveryEstimateMinor = cartShippingReady
+    ? cartEntryList.reduce((sum, product) => sum + (product.shippingFeeMinor ?? 0), 0)
+    : 0;
   const detailImages = productDetails?.images.length
     ? productDetails.images
     : detailProduct?.imageUrl ? [detailProduct.imageUrl] : [];
@@ -1963,11 +2162,10 @@ export function App() {
       .filter(Boolean)
       .join(" · ")
     : "";
-  const shipping = subtotal > 0 ? 35_000 * 100 : 0;
   const discount = appliedPromo === "SAVE10" && subtotal >= MIN_PROMO_SUBTOTAL
     ? Math.round(subtotal * 0.1)
     : 0;
-  const total = subtotal + shipping - discount;
+  const total = subtotal - discount + deliveryEstimateMinor;
 
   const retryCatalog = () => setCatalogAttempt((attempt) => attempt + 1);
   const renderCatalogState = (message: string, canRetry: boolean) => (
@@ -2074,10 +2272,16 @@ export function App() {
     return () => window.removeEventListener("paste", handlePaste);
   }, [language]);
 
-  const handleAddToCart = (productId: string, sku?: Record<string, unknown>) => {
+  const handleAddToCart = (
+    productId: string,
+    sku?: Record<string, unknown>,
+    freightOption?: AliExpressFreightOption,
+    quantity = 1,
+  ) => {
     const baseProduct = knownProducts.find((product) => product.id === productId)
       ?? products.find((product) => product.id === productId)
       ?? (detailProduct?.id === productId ? detailProduct : undefined);
+    let refreshedQuote = false;
     if (sku && baseProduct) {
       const skuId = readString(sku, "sku_id", "id");
       const price = Number(readString(sku, "offer_sale_price", "sku_price").replace(",", "."));
@@ -2089,23 +2293,49 @@ export function App() {
         setNotice(localizeText("Этот вариант сейчас недоступен", language));
         return;
       }
-      const lineId = `${productId}::${skuId}`;
+      const lineId = `${productId.split("::")[0]}::${skuId}`;
       const variantProduct: ApiProduct = {
         ...baseProduct,
         id: lineId,
         skuId,
         variantLabel,
         priceMinor: Math.round(price * 100),
+        ...(freightOption ? {
+          shippingOptionCode: freightOption.code,
+          shippingCompany: freightOption.company,
+          shippingFeeFormat: freightOption.feeFormat,
+          shippingCurrency: freightOption.currency,
+          shippingFeeMinor: freightOption.feeUzsMinor,
+          shippingMinDays: freightOption.minDeliveryDays,
+          shippingMaxDays: freightOption.maxDeliveryDays,
+          shippingTracking: freightOption.tracking ?? undefined,
+          shippingQuoteQuantity: quantity,
+        } : {}),
         imageUrl: marketplaceImageUrl(
           readRecords(sku.ae_sku_property_dtos).map((property) => readString(property, "sku_image")).find(Boolean) || baseProduct.imageUrl || null,
+          640,
         ),
       };
       setKnownProducts((current) => Array.from(new Map([...current, variantProduct].map((product) => [product.id, product])).values()).slice(-100));
-      setCartItems((items) => ({ ...items, [lineId]: (items[lineId] ?? 0) + 1 }));
+      if (quoteRefreshProductId === lineId && cartItems[lineId]) {
+        refreshedQuote = true;
+        setQuoteRefreshProductId("");
+        setNotice(localizeText("Тариф доставки обновлён", language));
+      } else {
+        setCartItems((items) => ({ ...items, [lineId]: (items[lineId] ?? 0) + quantity }));
+      }
     } else {
       setCartItems((items) => ({ ...items, [productId]: (items[productId] ?? 0) + 1 }));
     }
-    setNotice("Товар добавлен в корзину");
+    if (!refreshedQuote) setNotice("Товар добавлен в корзину");
+  };
+
+  const beginProductPurchase = (product: ApiProduct) => {
+    if (liveCatalog && /^\d+$/.test(product.id.split("::")[0])) {
+      openProductDetails(product);
+      return;
+    }
+    handleAddToCart(product.id);
   };
 
   const toggleFavorite = (productId: string) => {
@@ -2190,8 +2420,10 @@ export function App() {
     </section>
   );
 
-  const openProductDetails = (product: ApiProduct) => {
+  const openProductDetails = (product: ApiProduct, refreshQuote = false) => {
     setHoveredProductId(null);
+    setQuoteRefreshProductId(refreshQuote ? product.id : "");
+    setFreightQuantity(refreshQuote ? cartItems[product.id] ?? 1 : 1);
     setDetailProduct(product);
   };
 
@@ -2319,7 +2551,14 @@ export function App() {
   const buyNow = () => {
     if (!detailProduct) return;
     if (detailHasVariants && !detailSkuCanBeAdded) return;
-    handleAddToCart(detailProduct.id, detailHasVariants ? selectedDetailSku ?? undefined : undefined);
+    const isAliExpressProduct = /^\d+$/.test(detailProduct.id.split("::")[0]);
+    if (isAliExpressProduct && (!selectedDetailSku || !selectedFreightOption || freightLoading)) return;
+    handleAddToCart(
+      detailProduct.id,
+      detailHasVariants ? selectedDetailSku ?? undefined : undefined,
+      selectedFreightOption ?? undefined,
+      freightQuantity,
+    );
     setDetailProduct(null);
     setView("Корзина");
   };
@@ -2340,6 +2579,105 @@ export function App() {
     setNotice("Промокод SAVE10 применён");
   };
 
+  const startCheckout = () => {
+    if (!authToken) {
+      setAuthMode("login");
+      setAuthNotice(localizeText("Сначала войдите в аккаунт, чтобы сохранить заказ.", language));
+      setView("Профиль");
+      return;
+    }
+    if (!cartShippingReady) {
+      const productWithoutQuote = cartEntryList.find((product) =>
+        /^\d+$/.test(product.id.split("::")[0])
+        && (!product.skuId || !product.shippingOptionCode || product.shippingQuoteQuantity !== cartItems[product.id]),
+      );
+      if (productWithoutQuote) {
+        setNotice(localizeText("В корзине есть товары без действующего тарифа доставки. Откройте товар и выберите доставку для текущего количества.", language));
+        openProductDetails(productWithoutQuote, true);
+        return;
+      }
+    }
+    setCheckoutError("");
+    setCheckoutSuccessId("");
+    setCheckoutSuccessOrder(null);
+    setCheckoutForm({
+      recipientName: profileForm.name,
+      recipientPhone: profileForm.phone,
+      deliveryCity: profileForm.city || "Ташкент",
+      deliveryAddress: profileForm.address,
+    });
+    setView("Оформление");
+  };
+
+  const submitCheckout = async () => {
+    if (!authToken) {
+      setCheckoutError(localizeText("Сначала войдите в аккаунт, чтобы сохранить заказ.", language));
+      return;
+    }
+    if (!checkoutForm.recipientName.trim()
+      || !checkoutForm.recipientPhone.trim()
+      || !checkoutForm.deliveryCity.trim()
+      || !checkoutForm.deliveryAddress.trim()) {
+      setCheckoutError(localizeText("Введите данные доставки.", language));
+      return;
+    }
+    if (!cartEntryList.length || !cartShippingReady) {
+      setCheckoutError(localizeText("В корзине есть товары без действующего тарифа доставки. Откройте товар и выберите доставку для текущего количества.", language));
+      return;
+    }
+
+    setCheckoutBusy(true);
+    setCheckoutError("");
+    try {
+      const order = await api.orders.create(authToken, {
+        ...checkoutForm,
+        ...(appliedPromo ? { promoCode: appliedPromo } : {}),
+        items: cartEntryList.map((product) => {
+          const quantity = cartItems[product.id];
+          const supplierProductId = product.id.split("::")[0];
+          const marketplaceProduct = /^\d+$/.test(supplierProductId);
+          return {
+            productId: product.id,
+            quantity,
+            ...(marketplaceProduct ? {
+              supplierProductId,
+              supplierSkuId: product.skuId,
+              productTitle: productTitle(product) || product.titleUz,
+              variantLabel: product.variantLabel,
+              imageUrl: product.imageUrl ?? undefined,
+              unitPriceMinor: product.priceMinor,
+              shippingOptionCode: product.shippingOptionCode,
+              shippingFeeMinor: product.shippingFeeMinor,
+              shippingCompany: product.shippingCompany,
+              shippingFeeFormat: product.shippingFeeFormat,
+              shippingCurrency: product.shippingCurrency,
+              shippingMinDays: product.shippingMinDays,
+              shippingMaxDays: product.shippingMaxDays,
+              shippingTracking: product.shippingTracking,
+              shippingQuoteQuantity: product.shippingQuoteQuantity,
+            } : {}),
+          };
+        }),
+      });
+      setOrders((current) => [order, ...current.filter((item) => item.id !== order.id)]);
+      setCartItems({});
+      setPromo("");
+      setAppliedPromo("");
+      setCheckoutSuccessOrder(order);
+      setCheckoutSuccessId(order.id);
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 401) {
+        clearExpiredSession(profile?.email);
+        return;
+      }
+      setCheckoutError(error instanceof Error
+        ? error.message
+        : localizeText("Не удалось сохранить заказ. Попробуйте ещё раз.", language));
+    } finally {
+      setCheckoutBusy(false);
+    }
+  };
+
   const handleQtyChange = (productId: string, delta: number) => {
     setCartItems((items) => {
       const nextQty = (items[productId] ?? 0) + delta;
@@ -2352,6 +2690,7 @@ export function App() {
   };
 
   const establishFirebaseSession = async (user: FirebaseUser) => {
+    const { getIdToken, sendEmailVerification } = await import("@firebase/auth");
     if (!user.emailVerified) {
       await sendEmailVerification(user);
       setVerificationPending(true);
@@ -2369,6 +2708,7 @@ export function App() {
   };
 
   const submitAuth = async () => {
+    const firebaseAuth = await getFirebaseAuth();
     if (!firebaseAuth) {
       setAuthNotice("Firebase ещё не настроен. Добавьте параметры веб-приложения Firebase в окружение frontend.");
       return;
@@ -2376,6 +2716,7 @@ export function App() {
     setProfileBusy(true);
     setAuthNotice("");
     try {
+      const { createUserWithEmailAndPassword, sendEmailVerification, signInWithEmailAndPassword } = await import("@firebase/auth");
       if (authMode === "register") {
         const credential = await createUserWithEmailAndPassword(firebaseAuth, authEmail.trim(), authPassword);
         await sendEmailVerification(credential.user);
@@ -2397,6 +2738,7 @@ export function App() {
   };
 
   const checkEmailVerification = async () => {
+    const firebaseAuth = await getFirebaseAuth();
     if (!firebaseAuth?.currentUser) {
       setAuthNotice("Войдите снова после подтверждения email.");
       setVerificationPending(false);
@@ -2405,6 +2747,7 @@ export function App() {
     setProfileBusy(true);
     setAuthNotice("");
     try {
+      const { reload } = await import("@firebase/auth");
       await reload(firebaseAuth.currentUser);
       const user = firebaseAuth.currentUser;
       if (!user.emailVerified) {
@@ -2418,6 +2761,7 @@ export function App() {
   };
 
   const resendVerificationEmail = async () => {
+    const firebaseAuth = await getFirebaseAuth();
     if (!firebaseAuth?.currentUser) {
       setAuthNotice("Сессия регистрации завершена. Войдите в аккаунт, чтобы запросить письмо ещё раз.");
       return;
@@ -2425,6 +2769,7 @@ export function App() {
     setProfileBusy(true);
     setAuthNotice("");
     try {
+      const { sendEmailVerification } = await import("@firebase/auth");
       await sendEmailVerification(firebaseAuth.currentUser);
       setAuthNotice(`Письмо отправлено повторно на ${firebaseAuth.currentUser.email ?? authEmail}.`);
     } catch (error) {
@@ -2434,6 +2779,8 @@ export function App() {
 
   const returnToLogin = async () => {
     try {
+      const firebaseAuth = await getFirebaseAuth();
+      const { signOut } = await import("@firebase/auth");
       if (firebaseAuth) await signOut(firebaseAuth);
       setVerificationPending(false);
       setAuthNotice("");
@@ -2447,15 +2794,19 @@ export function App() {
     localStorage.removeItem("uriona-access-token");
     setAuthToken("");
     setProfile(null);
-    if (!firebaseAuth) return;
     try {
-      await signOut(firebaseAuth);
+      const firebaseAuth = await getFirebaseAuth();
+      if (firebaseAuth) {
+        const { signOut } = await import("@firebase/auth");
+        await signOut(firebaseAuth);
+      }
     } catch (error) {
       setNotice(firebaseErrorMessage(error));
     }
   };
 
   const submitPasswordReset = async () => {
+    const firebaseAuth = await getFirebaseAuth();
     if (!firebaseAuth) {
       setAuthNotice("Firebase ещё не настроен. Добавьте параметры веб-приложения Firebase в окружение frontend.");
       return;
@@ -2463,6 +2814,7 @@ export function App() {
     setProfileBusy(true);
     setAuthNotice("");
     try {
+      const { sendPasswordResetEmail } = await import("@firebase/auth");
       await sendPasswordResetEmail(firebaseAuth, authEmail.trim());
       setAuthNotice("Если аккаунт с таким email существует, на него отправлена ссылка для сброса пароля.");
     } catch (error) {
@@ -2599,8 +2951,14 @@ export function App() {
         </div>
 
         {catalogSource === "local" && <p className="catalog-source-note" role="status">{text.localCatalogNote}</p>}
-        <div className={`product-grid columns-${productGridColumns}`}>
-          {catalogMessage ? renderCatalogState(catalogMessage, Boolean(catalogError)) : visibleProducts.map((product, index) => {
+        {catalogMessage
+          ? <div className="product-grid">{renderCatalogState(catalogMessage, Boolean(catalogError))}</div>
+          : <VirtualProductGrid
+            items={visibleProducts}
+            columns={productGridColumns}
+            className={`columns-${productGridColumns}`}
+            getKey={(product) => product.id}
+            renderItem={(product, index) => {
             const isLiked = liked.includes(product.id);
             const tag = product.status === "sale" ? "Скидка" : product.status === "popular" ? "Популярно" : "Новинка";
             const previewImages = previewImagesFor(product);
@@ -2648,7 +3006,7 @@ export function App() {
                     {renderProductPrice(product)}
                     <div className="product-card-actions">
                       {liveCatalog && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>{localizeText("Подробнее", language)}</button>}
-                      <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}>
+                      <button type="button" className="mini-cart" onClick={() => beginProductPurchase(product)}>
                         <ShoppingBag size={14} />{localizeText("Купить", language)}
                       </button>
                     </div>
@@ -2656,8 +3014,8 @@ export function App() {
                 </div>
               </article>
             );
-          })}
-        </div>
+          }}
+          />}
         {renderSearchFallback()}
         {renderCatalogPagination()}
       </section>
@@ -2873,8 +3231,14 @@ export function App() {
             </div>
           )}
           {catalogSource === "local" && <p className="catalog-source-note" role="status">{text.localCatalogNote}</p>}
-          <div className={`product-grid compact-grid columns-${productGridColumns}`}>
-            {catalogMessage ? renderCatalogState(catalogMessage, Boolean(catalogError)) : visibleProducts.map((product, index) => {
+          {catalogMessage
+            ? <div className="product-grid compact-grid">{renderCatalogState(catalogMessage, Boolean(catalogError))}</div>
+            : <VirtualProductGrid
+              items={visibleProducts}
+              columns={productGridColumns}
+              className={`compact-grid columns-${productGridColumns}`}
+              getKey={(product) => product.id}
+              renderItem={(product, index) => {
               const previewImages = previewImagesFor(product);
               return (
                 <article
@@ -2899,14 +3263,14 @@ export function App() {
                       {renderProductPrice(product)}
                       <div className="product-card-actions">
                         {liveCatalog && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>{localizeText("Подробнее", language)}</button>}
-                        <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}><Plus size={14} />{localizeText("Добавить", language)}</button>
+                        <button type="button" className="mini-cart" onClick={() => beginProductPurchase(product)}><Plus size={14} />{localizeText("Добавить", language)}</button>
                       </div>
                     </div>
                   </div>
                 </article>
               );
-            })}
-          </div>
+            }}
+            />}
           {renderSearchFallback()}
           {renderCatalogPagination()}
         </>
@@ -2944,7 +3308,7 @@ export function App() {
                 <strong>{formatUzs(product.priceMinor)}</strong>
                 <div className="product-card-actions">
                   {liveCatalog && <button type="button" className="product-details-btn" onClick={() => void openProductDetails(product)}>{localizeText("Подробнее", language)}</button>}
-                  <button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}><Plus size={14} />{localizeText("Купить", language)}</button>
+                  <button type="button" className="mini-cart" onClick={() => beginProductPurchase(product)}><Plus size={14} />{localizeText("Купить", language)}</button>
                 </div>
               </div>
             </div>
@@ -2982,14 +3346,14 @@ export function App() {
 
       <div className="low-grid">
         <div className="info-card">
-          <small>Срок</small>
-          <h3>От 7 до 21 дня</h3>
-          <p>Зависит от продавца, типа товара и логистики до Ташкента.</p>
+          <small>{localizeText("Срок", language)}</small>
+          <h3>{localizeText("Зависит от выбранного товара", language)}</h3>
+          <p>{localizeText("AliExpress показывает доступный срок после выбора варианта и способа доставки.", language)}</p>
         </div>
         <div className="info-card accent">
-          <small>Отслеживание</small>
-          <h3>По треку и статусам</h3>
-          <p>Получаете уведомления о перемещении посылки и готовности к выдаче.</p>
+          <small>{localizeText("Отслеживание у перевозчика", language)}</small>
+          <h3>{localizeText("Условия зависят от тарифа", language)}</h3>
+          <p>{localizeText("Доступность отслеживания зависит от выбранного способа доставки и появится при расчёте.", language)}</p>
         </div>
       </div>
     </section>
@@ -3004,7 +3368,7 @@ export function App() {
         </div>
       </div>
       <div className="profile-help">
-        <details><summary>Как оформить заказ?</summary><p>Добавьте доступные товары в корзину и перейдите к оформлению. Сейчас оформление и приём оплаты ещё не подключены.</p></details>
+        <details><summary>Как оформить заказ?</summary><p>Добавьте товары в корзину, выберите способ доставки для каждого товара и отправьте заказ. URIONA сохранит заказ; подтверждение доставки и оплата будут согласованы отдельно.</p></details>
         <details><summary>Где посмотреть статус заказа?</summary><p>Статус оформленного заказа будет доступен в профиле, в разделе «Мои заказы».</p></details>
         <details><summary>Почему каталог может быть недоступен?</summary><p>Если источник товаров временно не отвечает, Uriona покажет сообщение и кнопку повтора запроса.</p></details>
         <div className="profile-help-actions">
@@ -3044,6 +3408,15 @@ export function App() {
                 <div className="cart-copy">
                   <h3>{productCardTitle(productTitle(product) || "")}</h3>
                   <p>{product.variantLabel ? `${product.variantLabel} · ` : ""}{formatUzs(product.priceMinor)}</p>
+                  <small className="cart-shipping-note">
+                    {product.shippingCompany && product.shippingQuoteQuantity === cartItems[product.id]
+                      ? `${localizeText("Доставка", language)}: ${product.shippingCompany} · ${product.shippingFeeFormat || `— ${product.shippingCurrency ?? "UZS"}`} (${formatUzs(product.shippingFeeMinor ?? 0)})${product.shippingMinDays || product.shippingMaxDays
+                        ? ` · ${product.shippingMinDays || "?"}–${product.shippingMaxDays || "?"} ${localizeText("дней", language)}`
+                        : ""}`
+                      : product.shippingCompany
+                        ? localizeText("Доставка пересчитана для другого количества. Вернитесь к товару, чтобы получить новый тариф.", language)
+                        : localizeText("Доставка ещё не рассчитана для этого товара.", language)}
+                  </small>
                 </div>
                 <div className="qty-control">
                   <button type="button" onClick={() => handleQtyChange(product.id, -1)}><Minus size={14} /></button>
@@ -3072,16 +3445,82 @@ export function App() {
 
           <div className="totals">
             <div><span>Товары</span><b>{formatUzs(subtotal)}</b></div>
-            <div><span>Доставка</span><b>{formatUzs(shipping)}</b></div>
+            <div><span>{localizeText("Стоимость доставки", language)}</span><b>{cartShippingReady ? formatUzs(deliveryEstimateMinor) : localizeText("Сначала выберите тариф для каждого товара", language)}</b></div>
             <div><span>Скидка</span><b>-{formatUzs(discount)}</b></div>
-            <div className="grand"><span>Итого</span><b>{formatUzs(total)}</b></div>
+            <div className="grand"><span>{localizeText("Итог с доставкой", language)}</span><b>{formatUzs(total)}</b></div>
           </div>
 
-          <button type="button" className="primary-btn checkout-btn" onClick={() => setNotice("Оформление заказа ещё не подключено")}>
-            Перейти к оформлению <ArrowRight size={18} />
+          <button type="button" className="primary-btn checkout-btn" onClick={startCheckout}>
+            {localizeText("Перейти к оформлению", language)} <ArrowRight size={18} />
           </button>
-          <p className="checkout-note">Оформление заказа пока недоступно.</p>
+          <p className="checkout-note">{localizeText("Доставка включена в итог. Заказ будет сохранён в ожидании оплаты; платёжный способ подключим отдельно.", language)}</p>
         </>
+      )}
+    </section>
+  );
+
+  const renderCheckout = () => (
+    <section className="screen-panel">
+      <div className="section-head panel-head">
+        <div>
+          <small>{localizeText("Оформление заказа", language)}</small>
+          <h2>{checkoutSuccessId ? localizeText("Ожидает оплаты", language) : localizeText("Данные доставки", language)}</h2>
+        </div>
+        {!checkoutSuccessId && <span className="pill-count">{cartCount} {localizeText("шт.", language)}</span>}
+      </div>
+      {checkoutSuccessId ? (
+        <div className="checkout-result" role="status">
+          <PackageCheck size={38} />
+          <h3>{localizeText("Ожидает оплаты", language)} · {checkoutSuccessId.slice(0, 8)}</h3>
+          <p>{localizeText("Заказ сформирован и ожидает оплаты. Способ оплаты подключим отдельно.", language)}{checkoutSuccessOrder ? ` ${localizeText("Итог с доставкой", language)}: ${formatUzs(checkoutSuccessOrder.totalMinor)}.` : ""}</p>
+          <div className="profile-actions">
+            <button type="button" className="primary-btn" onClick={() => { setProfileSection("orders"); setView("Профиль"); }}>
+              {localizeText("Перейти к моим заказам", language)}
+            </button>
+            <button type="button" className="secondary-btn" onClick={() => setView("Главная")}>
+              {localizeText("Продолжить покупки", language)}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="checkout-layout">
+          <div className="checkout-form">
+            <label>{localizeText("Получатель", language)}
+              <input autoComplete="name" value={checkoutForm.recipientName} onChange={(event) => setCheckoutForm({ ...checkoutForm, recipientName: event.target.value })} />
+            </label>
+            <label>{localizeText("Номер телефона", language)}
+              <input type="tel" autoComplete="tel" value={checkoutForm.recipientPhone} onChange={(event) => setCheckoutForm({ ...checkoutForm, recipientPhone: event.target.value })} />
+            </label>
+            <label>{localizeText("Город", language)}
+              <input autoComplete="address-level2" value={checkoutForm.deliveryCity} onChange={(event) => setCheckoutForm({ ...checkoutForm, deliveryCity: event.target.value })} />
+            </label>
+            <label>{localizeText("Адрес доставки", language)}
+              <textarea autoComplete="street-address" rows={3} value={checkoutForm.deliveryAddress} onChange={(event) => setCheckoutForm({ ...checkoutForm, deliveryAddress: event.target.value })} />
+            </label>
+            {checkoutError && <p role="alert" className="checkout-error">{checkoutError}</p>}
+            <div className="checkout-form-actions">
+              <button type="button" className="secondary-btn" onClick={() => setView("Корзина")}>{localizeText("Назад в корзину", language)}</button>
+              <button type="button" className="primary-btn" disabled={checkoutBusy || !cartEntryList.length} onClick={() => void submitCheckout()}>
+                {checkoutBusy ? localizeText("Сохраняем заказ…", language) : localizeText("Подтвердить заказ", language)}
+              </button>
+            </div>
+          </div>
+          <aside className="checkout-summary">
+            <h3>{localizeText("Ваш заказ", language)}</h3>
+            {cartEntryList.map((product) => (
+              <div className="checkout-summary-item" key={product.id}>
+                <span>{productCardTitle(productTitle(product) || "")}{product.variantLabel ? ` · ${product.variantLabel}` : ""} × {cartItems[product.id]}</span>
+                <b>{formatUzs(product.priceMinor * cartItems[product.id])}</b>
+                {product.shippingCompany && <small>{product.shippingCompany}: {product.shippingFeeFormat} {product.shippingCurrency} · {localizeText("Доставка в сумах", language)}: {formatUzs(product.shippingFeeMinor ?? 0)}</small>}
+              </div>
+            ))}
+            <div className="checkout-summary-total"><span>{localizeText("Товары", language)}</span><b>{formatUzs(subtotal)}</b></div>
+            <div className="checkout-summary-total"><span>{localizeText("Стоимость доставки", language)}</span><b>{formatUzs(deliveryEstimateMinor)}</b></div>
+            {discount > 0 && <div className="checkout-summary-total"><span>{localizeText("Скидка", language)}</span><b>-{formatUzs(discount)}</b></div>}
+            <div className="checkout-summary-total"><span>{localizeText("Итог с доставкой", language)}</span><b>{formatUzs(total)}</b></div>
+            <p>{localizeText("Доставка включена в итог. Заказ будет сохранён в ожидании оплаты; платёжный способ подключим отдельно.", language)}</p>
+          </aside>
+        </div>
       )}
     </section>
   );
@@ -3192,10 +3631,11 @@ export function App() {
                     <article className="profile-order-card" key={order.id}>
                       <div className="profile-order-top"><div><small>Заказ {order.id.slice(0, 8)}</small><time>{orderDate(order.createdAt)}</time></div><span className={`order-status status-${order.status.toLowerCase()}`}>{orderStatusLabels[order.status] ?? order.status}</span></div>
                       <div className="profile-order-items">{order.items.map((item) => <div className="profile-order-item" key={item.id}>
-                        {item.product?.imageUrl ? <img src={item.product.imageUrl} alt="" loading="lazy" /> : <span className="order-item-placeholder"><ShoppingBag size={16} /></span>}
-                        <span>{item.product ? productTitle(item.product) : localizeText(`Товар ${item.productId.slice(0, 8)}`, language)}</span><b>× {item.quantity}</b>
+                        {item.imageUrl || item.product?.imageUrl ? <img src={item.imageUrl || item.product?.imageUrl || ""} alt="" loading="lazy" /> : <span className="order-item-placeholder"><ShoppingBag size={16} /></span>}
+                        <span>{item.productTitle || (item.product ? productTitle(item.product) : localizeText(`Товар ${item.productId.slice(0, 8)}`, language))}{item.variantLabel ? ` · ${item.variantLabel}` : ""}</span><b>× {item.quantity}</b>
+                        {item.shippingCompany && <small className="cart-shipping-note">{item.shippingCompany} · {item.shippingFeeFormat} {item.shippingCurrency}</small>}
                       </div>)}</div>
-                      <div className="profile-order-bottom"><span>{order.deliveryAddress}</span><b>{formatUzs(order.totalMinor)}</b></div>
+                      <div className="profile-order-bottom"><span>{[order.recipientName, order.recipientPhone, order.deliveryCity, order.deliveryAddress].filter(Boolean).join(" · ")}{order.deliveryMinor ? ` · ${localizeText("Стоимость доставки", language)}: ${formatUzs(order.deliveryMinor)}` : ""}</span><b>{formatUzs(order.totalMinor)}</b></div>
                     </article>
                   ))}</div>}
               </>}
@@ -3205,7 +3645,7 @@ export function App() {
                   <article className="product-card compact-card" key={product.id}>
                     <div className={`product-media media-${index % 5}`}>{product.imageUrl && <img src={product.imageUrl} alt={productTitle(product) || ""} loading="lazy" />}</div>
                     <div className="product-body"><span className="product-category">{categoryLabel(product.category) || "Товар"}</span><h3>{productCardTitle(productTitle(product) || "")}</h3>
-                      <div className="price-row"><strong>{formatUzs(product.priceMinor)}</strong><button type="button" className="mini-cart" onClick={() => handleAddToCart(product.id)}><ShoppingBag size={14} />В корзину</button></div>
+                      <div className="price-row"><strong>{formatUzs(product.priceMinor)}</strong><button type="button" className="mini-cart" onClick={() => beginProductPurchase(product)}><ShoppingBag size={14} />В корзину</button></div>
                       <div className="profile-card-actions">{/^\d+$/.test(product.id) && <button type="button" onClick={() => openProductDetails(product)}>Подробнее</button>}<button type="button" onClick={() => toggleFavorite(product.id)}>Убрать</button></div>
                     </div>
                   </article>
@@ -3350,6 +3790,7 @@ export function App() {
     if (view === "Как заказать") return renderHowToOrder();
     if (view === "Доставка") return renderDelivery();
     if (view === "Поддержка") return renderSupport();
+    if (view === "Оформление") return renderCheckout();
     if (view === "Корзина") return renderCart();
     return renderProfile();
   };
@@ -3569,7 +4010,7 @@ export function App() {
                   <img
                     className="product-dialog-image"
                     src={selectedDetailSku
-                      ? marketplaceImageUrl(readRecords(selectedDetailSku.ae_sku_property_dtos).map((property) => readString(property, "sku_image")).find(Boolean) || null)
+                      ? marketplaceImageUrl(readRecords(selectedDetailSku.ae_sku_property_dtos).map((property) => readString(property, "sku_image")).find(Boolean) || null, 1280)
                         || detailImages[selectedDetailImage] || detailImages[0]
                       : detailImages[selectedDetailImage] || detailImages[0]}
                     alt={productDetails?.subject || productTitle(detailProduct) || ""}
@@ -3682,7 +4123,7 @@ export function App() {
                                 })}
                                 aria-pressed={selectedSkuProperties[group.id] === value}
                               >
-                                {readString(propertyImage ?? {}, "sku_image") && <img src={marketplaceImageUrl(readString(propertyImage ?? {}, "sku_image")) || undefined} alt="" loading="lazy" />}
+                                {readString(propertyImage ?? {}, "sku_image") && <img src={marketplaceImageUrl(readString(propertyImage ?? {}, "sku_image"), 160) || undefined} alt="" loading="lazy" />}
                                 {value}
                               </button>
                             );
@@ -3693,7 +4134,42 @@ export function App() {
                     {selectedDetailSku && <p className="product-detail-stock">
                       {selectedVariantLabel}{detailSkuStock ? ` · ${localizeText("В наличии", language)}: ${detailSkuStock}` : ""}
                     </p>}
+                    {selectedDetailSku && <label className="product-detail-quantity">
+                      {localizeText("Количество", language)}
+                      <input
+                        type="number"
+                        min={1}
+                        max={999}
+                        value={freightQuantity}
+                        onChange={(event) => {
+                          const quantity = Number(event.target.value);
+                          if (Number.isInteger(quantity) && quantity >= 1 && quantity <= 999) setFreightQuantity(quantity);
+                        }}
+                      />
+                    </label>}
                   </div>}
+                  {detailProduct.id.split("::")[0].match(/^\d+$/) && <section className="product-freight-options" aria-live="polite">
+                    <h3>{localizeText("Доставка в Узбекистан", language)}</h3>
+                    {freightLoading && <p role="status">{localizeText("Рассчитываем варианты доставки…", language)}</p>}
+                    {freightError && <p role="alert">{freightError}</p>}
+                    {freightOptions.map((option) => (
+                      <button
+                        type="button"
+                        key={option.code}
+                        className={`product-freight-option ${selectedFreightCode === option.code ? "active" : ""}`}
+                        aria-pressed={selectedFreightCode === option.code}
+                        onClick={() => setSelectedFreightCode(option.code)}
+                      >
+                        <span><strong>{option.company}</strong><small>{option.feeFormat || `— ${option.currency}`} · {localizeText("Доставка в сумах", language)}: {formatUzs(option.feeUzsMinor)}</small></span>
+                        <span>
+                          {option.minDeliveryDays && option.maxDeliveryDays
+                            ? `${option.minDeliveryDays}–${option.maxDeliveryDays} ${localizeText("дней", language)}`
+                            : option.minDeliveryDays || option.maxDeliveryDays}
+                          <small>{option.tracking === null ? "" : localizeText(option.tracking ? "Отслеживание доступно" : "Без отслеживания", language)}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </section>}
                 </>}
                 <div className="product-dialog-actions">
                   <button
@@ -3712,10 +4188,18 @@ export function App() {
                 <button
                   type="button"
                   className="primary-btn product-detail-add"
-                  disabled={detailLoading || (detailHasVariants ? !detailSkuCanBeAdded : false)}
+                  disabled={detailLoading
+                    || freightLoading
+                    || (detailHasVariants ? !detailSkuCanBeAdded : false)
+                    || (/^\d+$/.test(detailProduct.id.split("::")[0]) && (!selectedDetailSku || !selectedFreightOption))}
                   onClick={buyNow}
                 >
-                  <ShoppingBag size={17} />{localizeText("Купить сейчас", language)}
+                  <ShoppingBag size={17} />{localizeText(
+                    quoteRefreshProductId && quoteRefreshProductId.split("::")[0] === detailProduct.id.split("::")[0]
+                      ? "Обновить тариф доставки"
+                      : "Купить сейчас",
+                    language,
+                  )}
                 </button>
               </div>
             </div>

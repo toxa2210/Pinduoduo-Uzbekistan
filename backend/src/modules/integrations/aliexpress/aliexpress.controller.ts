@@ -14,6 +14,7 @@ import {
   UseInterceptors
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import sharp from "sharp";
 import { AliexpressService } from "./aliexpress.service";
 
 const IMAGE_HOSTS = ["alicdn.com", "aliexpress-media.com"];
@@ -27,7 +28,7 @@ export class AliexpressController {
   @Get("image")
   @Header("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800")
   @Header("X-Content-Type-Options", "nosniff")
-  async productImage(@Query("url") imageUrl?: string): Promise<StreamableFile> {
+  async productImage(@Query("url") imageUrl?: string, @Query("width") requestedWidth?: string): Promise<StreamableFile> {
     if (!imageUrl || imageUrl.length > 2048) {
       throw new BadRequestException("A valid image URL is required");
     }
@@ -89,10 +90,24 @@ export class AliexpressController {
     }
 
     const image = Buffer.concat(chunks, totalBytes);
-    return new StreamableFile(image, {
-      type: contentType,
+    const width = requestedWidth === undefined ? 480 : Number(requestedWidth);
+    if (!Number.isInteger(width) || width < 96 || width > 1600) {
+      throw new BadRequestException("Image width must be an integer between 96 and 1600");
+    }
+    let optimized: Buffer;
+    try {
+      optimized = await sharp(image, { animated: false })
+        .rotate()
+        .resize({ width, withoutEnlargement: true })
+        .webp({ quality: width > 1000 ? 88 : 76, effort: 4 })
+        .toBuffer();
+    } catch {
+      throw new BadGatewayException("Image provider returned an invalid image");
+    }
+    return new StreamableFile(optimized, {
+      type: "image/webp",
       disposition: "inline",
-      length: image.byteLength
+      length: optimized.byteLength
     });
   }
 
@@ -149,6 +164,34 @@ export class AliexpressController {
       ...(shipToCountry ? { ship_to_country: shipToCountry } : {}),
       ...(targetCurrency ? { target_currency: targetCurrency } : {}),
       ...(targetLanguage ? { target_language: targetLanguage } : {})
+    });
+  }
+
+  @Get("freight")
+  freightOptions(
+    @Query("productId") productId?: string,
+    @Query("selectedSkuId") selectedSkuId?: string,
+    @Query("quantity") quantity?: string,
+    @Query("shipToCountry") shipToCountry?: string,
+    @Query("currency") currency?: string,
+    @Query("language") language?: string,
+    @Query("locale") locale?: string,
+    @Query("provinceCode") provinceCode?: string,
+    @Query("cityCode") cityCode?: string
+  ) {
+    if (!productId || !selectedSkuId || !quantity) {
+      throw new BadRequestException("productId, selectedSkuId, and quantity are required");
+    }
+    return this.aliexpress.freightOptions({
+      productId,
+      selectedSkuId,
+      quantity,
+      ...(shipToCountry ? { shipToCountry } : {}),
+      ...(currency ? { currency } : {}),
+      ...(language ? { language } : {}),
+      ...(locale ? { locale } : {}),
+      ...(provinceCode ? { provinceCode } : {}),
+      ...(cityCode ? { cityCode } : {})
     });
   }
 

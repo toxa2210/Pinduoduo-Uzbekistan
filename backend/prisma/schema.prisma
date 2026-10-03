@@ -40,12 +40,12 @@ model User {
   id            String         @id @default(cuid())
   phone         String?        @unique
   email         String?        @unique
-  firebaseUid   String?        @unique
-  passwordHash  String?
   name          String?
   city          String?
   address       String?
-  language      String          @default("ru")
+  language      String         @default("ru")
+  passwordHash  String?
+  firebaseUid   String?        @unique
   role          UserRole       @default(CUSTOMER)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -139,7 +139,14 @@ model Order {
   user            User        @relation(fields: [userId], references: [id])
   status          OrderStatus @default(CREATED)
   totalMinor      Int
+  subtotalMinor   Int         @default(0)
+  deliveryMinor   Int         @default(0)
+  discountMinor   Int         @default(0)
+  promoCode       String?
   currency        String      @default("UZS")
+  recipientName   String?
+  recipientPhone  String?
+  deliveryCity    String?
   deliveryAddress String
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
@@ -158,6 +165,20 @@ model OrderItem {
   product       Product @relation(fields: [productId], references: [id])
   quantity      Int
   unitPriceMinor Int
+  supplierProductId String?
+  supplierSkuId String?
+  productTitle String?
+  variantLabel String?
+  imageUrl String?
+  shippingOptionCode String?
+  shippingFeeMinor Int?
+  shippingCompany String?
+  shippingFeeFormat String?
+  shippingCurrency String?
+  shippingMinDays String?
+  shippingMaxDays String?
+  shippingTracking Boolean?
+  shippingQuoteQuantity Int?
 
   @@index([orderId])
 }
@@ -188,10 +209,10 @@ model AliexpressOAuthState {
 }
 
 model AliexpressCredential {
-  id                    String    @id @default("primary")
-  accessTokenCiphertext String
-  refreshTokenCiphertext String
-  accessTokenExpiresAt  DateTime
-  refreshTokenExpiresAt DateTime?
-  updatedAt             DateTime  @updatedAt
+  id                       String    @id @default("primary")
+  accessTokenCiphertext    String
+  refreshTokenCiphertext   String
+  accessTokenExpiresAt     DateTime
+  refreshTokenExpiresAt    DateTime?
+  updatedAt                DateTime  @updatedAt
 }

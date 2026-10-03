@@ -38,6 +38,15 @@ export type ApiProduct = {
   inStock?: boolean;
   originalPriceMinor?: number;
   discountPercent?: number;
+  shippingOptionCode?: string;
+  shippingFeeMinor?: number;
+  shippingCompany?: string;
+  shippingFeeFormat?: string;
+  shippingCurrency?: string;
+  shippingMinDays?: string;
+  shippingMaxDays?: string;
+  shippingTracking?: boolean;
+  shippingQuoteQuantity?: number;
   category?: ApiCategory | null;
 };
 export type ApiOption = { id: string; name: string; parentId: string | null };
@@ -48,15 +57,61 @@ export type ApiOrder = {
   id: string;
   status: string;
   totalMinor: number;
+  subtotalMinor?: number;
+  deliveryMinor?: number;
+  discountMinor?: number;
+  promoCode?: string | null;
   currency: string;
   deliveryAddress: string;
+  recipientName?: string | null;
+  recipientPhone?: string | null;
+  deliveryCity?: string | null;
   createdAt: string;
   items: Array<{
     id: string;
     productId: string;
     quantity: number;
     unitPriceMinor: number;
+    supplierProductId?: string | null;
+    supplierSkuId?: string | null;
+    productTitle?: string | null;
+    variantLabel?: string | null;
+    imageUrl?: string | null;
+    shippingOptionCode?: string | null;
+    shippingFeeMinor?: number | null;
+    shippingCompany?: string | null;
+    shippingFeeFormat?: string | null;
+    shippingCurrency?: string | null;
+    shippingMinDays?: string | null;
+    shippingMaxDays?: string | null;
+    shippingTracking?: boolean | null;
     product?: Pick<ApiProduct, "id" | "titleRu" | "titleUz" | "imageUrl">;
+  }>;
+};
+export type ApiCreateOrder = {
+  recipientName: string;
+  recipientPhone: string;
+  deliveryCity: string;
+  deliveryAddress: string;
+  promoCode?: string;
+  items: Array<{
+    productId: string;
+    quantity: number;
+    supplierProductId?: string;
+    supplierSkuId?: string;
+    productTitle?: string;
+    variantLabel?: string;
+    imageUrl?: string;
+    unitPriceMinor?: number;
+    shippingOptionCode?: string;
+    shippingFeeMinor?: number;
+    shippingCompany?: string;
+    shippingFeeFormat?: string;
+    shippingCurrency?: string;
+    shippingMinDays?: string;
+    shippingMaxDays?: string;
+    shippingTracking?: boolean;
+    shippingQuoteQuantity?: number;
   }>;
 };
 export type ImageSearchMatch = {
@@ -119,7 +174,7 @@ function flattenText(value: unknown): string {
   return "";
 }
 
-export function marketplaceImageUrl(imageUrl: string | null): string | null {
+export function marketplaceImageUrl(imageUrl: string | null, width = 480): string | null {
   if (!imageUrl) return null;
   const normalized = imageUrl.startsWith("//") ? `https:${imageUrl}` : imageUrl;
   try {
@@ -129,7 +184,8 @@ export function marketplaceImageUrl(imageUrl: string | null): string | null {
     );
     if (!isMarketplaceImage || !["http:", "https:"].includes(url.protocol)) return normalized;
     url.protocol = "https:";
-    return `${API_BASE.replace(/\/$/, "")}/integrations/aliexpress/image?url=${encodeURIComponent(url.toString())}`;
+    const params = new URLSearchParams({ url: url.toString(), width: String(width) });
+    return `${API_BASE.replace(/\/$/, "")}/integrations/aliexpress/image?${params}`;
   } catch {
     return normalized;
   }
@@ -298,6 +354,12 @@ export const api = {
   product: (id: string) => request<ApiProduct>(`/products/${id}`),
   orders: {
     list: (token: string) => request<ApiOrder[]>("/orders", { headers: { Authorization: `Bearer ${token}` } }),
+    create: (token: string, order: ApiCreateOrder) =>
+      request<ApiOrder>("/orders", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify(order),
+      }),
   },
   aliexpress: {
     hotProducts: (params: Record<string, unknown> = {}) =>
@@ -310,6 +372,17 @@ export const api = {
       request<unknown>(queryPath("/integrations/aliexpress/dropshipping/categories", params)),
     productDetails: (productId: string, params: Record<string, unknown> = {}) =>
       request<unknown>(queryPath(`/integrations/aliexpress/product/${encodeURIComponent(productId)}`, params)),
+    freightOptions: (params: {
+      productId: string;
+      selectedSkuId: string;
+      quantity: number;
+      shipToCountry?: string;
+      currency?: string;
+      language?: string;
+      locale?: string;
+      provinceCode?: string;
+      cityCode?: string;
+    }) => request<unknown>(queryPath("/integrations/aliexpress/freight", params)),
     imageSearch: (image: File) => {
       const form = new FormData();
       form.append("image", image, image.name || "search-image");

@@ -1,1 +1,9 @@
-import { Body,Controller,Post,Headers } from "@nestjs/common"; import { IsNotEmpty,IsString } from "class-validator"; import { AuthService } from "../auth/auth.service"; import { OrdersService } from "../orders/orders.service"; class CheckoutDto{@IsString() @IsNotEmpty() deliveryAddress!:string;} @Controller("checkout") export class CheckoutController {constructor(private readonly auth:AuthService,private readonly orders:OrdersService){} @Post() async checkout(@Headers("authorization") authorization:string|undefined,@Body() body:CheckoutDto){const user=await this.auth.validateSession(authorization?.replace(/^Bearer\s+/i,"")??"");return this.orders.create({userId:user.id,deliveryAddress:body.deliveryAddress});}}
+import { Controller, GoneException, Post } from "@nestjs/common";
+
+@Controller("checkout")
+export class CheckoutController {
+  @Post()
+  checkout() {
+    throw new GoneException("Use POST /api/v1/orders with delivery details and verified cart items");
+  }
+}
